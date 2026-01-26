@@ -8,6 +8,8 @@ Endurece la seguridad de aplicaciones Laravel a nivel de sistema de archivos.
 
 Configura automáticamente permisos y propietarios de archivos para minimizar riesgos de seguridad en aplicaciones Laravel en producción. Implementa el principio de mínimo privilegio, permitiendo al servidor web solo los permisos estrictamente necesarios.
 
+**Ideal para:** Servidores de producción, VPS, entornos compartidos.
+
 ### Uso
 
 ```bash
@@ -57,6 +59,31 @@ sudo ./web_security_laravel.sh --owner john --web-user www-data /var/www/app
 
 # Ver ayuda completa
 ./web_security_laravel.sh --help
+```
+
+### Instalación en VPS (Recomendado)
+
+Para usar este script en múltiples servidores de producción:
+
+```bash
+# 1. Clonar el repositorio en tu VPS
+ssh usuario@tu-vps.com
+git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
+
+# 2. Crear enlace simbólico
+mkdir -p ~/bin
+ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh ~/bin/harden-laravel
+
+# 3. Añadir al PATH (opcional)
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. Usar desde cualquier directorio
+cd /var/www/mi-aplicacion
+sudo harden-laravel
+
+# 5. Actualizar el script cuando haya cambios
+cd ~/.scripts-repo && git pull
 ```
 
 ### Validaciones
@@ -112,10 +139,32 @@ sudo systemctl reload nginx
 
 ### Cuándo Usar
 
-- Después de desplegar una aplicación Laravel
-- Tras actualizar código en producción
-- Como parte de un proceso de hardening de servidor
-- Cuando se detectan permisos incorrectos
+- ✅ Después de desplegar una aplicación Laravel
+- ✅ Tras actualizar código en producción (deploy)
+- ✅ Como parte de un proceso de hardening de servidor
+- ✅ Cuando se detectan permisos incorrectos
+- ✅ Al configurar un nuevo VPS para Laravel
+- ✅ Después de clonar un repositorio en producción
+
+### Flujo de Trabajo Típico en Producción
+
+```bash
+# 1. Desplegar código (git pull, composer install, etc.)
+cd /var/www/mi-app
+git pull origin main
+composer install --no-dev --optimize-autoloader
+
+# 2. Aplicar permisos de seguridad
+sudo harden-laravel
+
+# 3. Limpiar caché de Laravel
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# 4. Verificar que todo funciona
+curl -I https://mi-app.com
+```
 
 ### Notas de Seguridad
 

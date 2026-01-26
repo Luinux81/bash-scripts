@@ -18,7 +18,39 @@ Colección de scripts útiles para Bash que facilitan tareas comunes de filesyst
 
 ### Para Usuarios
 
-#### Instalación Completa
+#### Opción A: Kit de Herramientas con Symlinks (Recomendado para VPS)
+
+Ideal si gestionas múltiples servidores y quieres mantener los scripts actualizados.
+
+```bash
+# 1. Clonar el repositorio en una carpeta oculta
+git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
+
+# 2. Crear carpeta bin si no existe
+mkdir -p ~/bin
+
+# 3. Crear enlaces simbólicos a los scripts que necesites
+ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh ~/bin/harden-laravel
+ln -s ~/.scripts-repo/scripts/filesystem/show-selected-files.sh ~/bin/show-files
+
+# 4. Añadir ~/bin al PATH (opcional pero recomendado)
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 5. Ahora puedes ejecutar desde cualquier directorio
+harden-laravel --help
+show-files
+```
+
+**Ventajas:**
+
+- ✅ Actualización fácil: `cd ~/.scripts-repo && git pull`
+- ✅ Centralización: Un solo repositorio, múltiples scripts disponibles
+- ✅ Escalabilidad: Añade más symlinks según necesites
+
+#### Opción B: Instalación Completa Local
+
+Para desarrollo o uso local con todas las herramientas:
 
 ```bash
 git clone https://github.com/Luinux81/bash-scripts.git
@@ -26,9 +58,9 @@ cd bash-scripts
 chmod +x scripts/**/*.sh
 ```
 
-#### Uso de Scripts Individuales
+#### Opción C: Scripts Individuales (Copiar y Pegar)
 
-Puedes copiar cualquier script y usarlo de forma independiente:
+Si solo necesitas un script específico sin el repositorio:
 
 ```bash
 # Copiar un script específico
@@ -54,6 +86,24 @@ find scripts -name "*.sh" -exec chmod +x {} \;
 # Instalar dependencias (Ubuntu/Debian)
 sudo apt install fzf xclip bat fd-find
 ```
+
+### Gestión en Múltiples VPS
+
+Si gestionas varios servidores, puedes mantener los scripts sincronizados:
+
+```bash
+# En cada VPS, clonar en ~/.scripts-repo
+ssh usuario@vps1.ejemplo.com
+git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
+
+# Crear symlinks solo a los scripts que necesites en ese servidor
+ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh ~/bin/harden-laravel
+
+# Para actualizar en todos los servidores
+cd ~/.scripts-repo && git pull
+```
+
+**Tip:** Puedes automatizar el despliegue con un script de provisioning (Ansible, Terraform, etc.)
 
 ## 📖 Uso
 
@@ -153,7 +203,7 @@ Cada directorio de scripts contiene su propio README con documentación específ
 
 ### Estructura del Proyecto
 
-```
+```text
 bash-scripts/
 ├── scripts/
 │   ├── filesystem/      # Scripts de manejo de archivos
