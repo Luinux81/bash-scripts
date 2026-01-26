@@ -156,25 +156,27 @@ LARAVEL_WARNING=""
 
 for dir in "${LARAVEL_DIRS[@]}"; do
     if [[ -d "$APP_PATH/$dir" ]]; then
-        ((FOUND_DIRS++))
+        FOUND_DIRS=$((FOUND_DIRS + 1))
     else
         MISSING_DIRS+=("$dir")
     fi
 done
 
 # Determinar el estado de la validación
-if [[ $FOUND_DIRS -lt 5 ]]; then
+if [[ $FOUND_DIRS -ge 5 ]] && [[ -f "$APP_PATH/artisan" ]] && [[ -f "$APP_PATH/composer.json" ]]; then
+    # Estructura Laravel válida
+    echo -e "${COLOR_GREEN}✅ Estructura de Laravel detectada correctamente${COLOR_RESET}"
+    LARAVEL_WARNING=""
+elif [[ $FOUND_DIRS -lt 5 ]]; then
+    # Faltan muchos directorios típicos
     echo -e "${COLOR_RED}⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel${COLOR_RESET}"
     echo -e "${COLOR_YELLOW}   Directorios típicos encontrados: $FOUND_DIRS de ${#LARAVEL_DIRS[@]}${COLOR_RESET}"
     if [[ ${#MISSING_DIRS[@]} -gt 0 ]]; then
         echo -e "${COLOR_YELLOW}   Directorios faltantes: ${MISSING_DIRS[*]}${COLOR_RESET}"
     fi
-    # Guardar el warning para mostrarlo en la confirmación
     LARAVEL_WARNING="NOT_LARAVEL"
-elif [[ -f "$APP_PATH/artisan" ]] && [[ -f "$APP_PATH/composer.json" ]]; then
-    echo -e "${COLOR_GREEN}✅ Estructura de Laravel detectada correctamente${COLOR_RESET}"
-    LARAVEL_WARNING=""
 else
+    # Tiene los directorios pero faltan archivos clave
     echo -e "${COLOR_YELLOW}⚠️  Advertencia: Algunos archivos típicos de Laravel no fueron encontrados${COLOR_RESET}"
     LARAVEL_WARNING="PARTIAL"
 fi
