@@ -128,24 +128,111 @@ Si el directorio **NO** parece Laravel, el warning se muestra **dos veces**:
 4. **Excepciones Laravel**: 775 en `storage/` y `bootstrap/cache/` (escritura necesaria)
 5. **Protección .env**: 640 (solo propietario y grupo pueden leer)
 
-### Configuración Adicional Requerida
+### Configuración Adicional Requerida en Nginx
 
-**⚠️ IMPORTANTE**: Después de ejecutar el script, debes configurar Nginx para prevenir ejecución de PHP en directorios de uploads.
+**⚠️ CRÍTICO PARA SEGURIDAD**: Después de ejecutar el script, debes configurar Nginx para completar el endurecimiento.
 
-Añade a tu configuración de Nginx (`/etc/nginx/sites-available/tu-sitio`):
+Añade estas reglas a tu configuración de Nginx (`/etc/nginx/sites-available/tu-sitio`, dentro del bloque `server`):
+
+#### Regla 1: Denegar ejecución de PHP en directorios de uploads/storage
 
 ```nginx
-location ~* ^/(storage|uploads|images)/.*\.php$ {
+# Previene ejecución de scripts maliciosos subidos por usuarios
+location ~* ^/(storage|public/storage|uploads|images|public/images)/.*\.php$ {
     deny all;
     return 403;
 }
 ```
 
-Luego recarga Nginx:
+#### Regla 2: Solo permitir index.php en public/
+
+```nginx
+# En Laravel, SOLO index.php debe ejecutarse en public/
+# Todo lo demás son assets estáticos (CSS, JS, imágenes)
+location ~* ^/(?!index\.php$).+\.php$ {
+    deny all;
+    return 403;
+}
+```
+
+**¿Por qué esta regla?** En tu directorio `public/` tienes subdirectorios como `js/`, `css/`, `images/`, `build/`, etc. Todos contienen solo archivos estáticos. Esta regla previene que se ejecute cualquier archivo PHP que no sea `index.php`, protegiendo contra:
+- Archivos PHP maliciosos en subdirectorios de `public/`
+- Scripts de prueba olvidados (test.php, info.php, phpinfo.php)
+- Exploits que intentan ejecutar PHP en directorios de assets
+
+#### Regla 3: Denegar acceso a archivos sensibles
+
+```nginx
+# Protege archivos de configuración y control de versiones
+location ~ /\.(env|git|svn|htaccess) {
+    deny all;
+    return 403;
+}
+```
+
+#### Aplicar los cambios
 
 ```bash
+# Verificar sintaxis
 sudo nginx -t
+
+# Si todo está OK, recargar
 sudo systemctl reload nginx
+```
+
+#### Ejemplo de configuración completa de Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name tudominio.com;
+    root /var/www/tu-app/public;
+
+    index index.php index.html;
+
+    # Regla 1: Denegar PHP en uploads/storage
+    location ~* ^/(storage|public/storage|uploads|images|public/images)/.*\.php$ {
+        deny all;
+        return 403;
+    }
+
+    # Regla 2: Solo permitir index.php
+    location ~* ^/(?!index\.php$).+\.php$ {
+        deny all;
+        return 403;
+    }
+
+    # Regla 3: Proteger archivos sensibles
+    location ~ /\.(env|git|svn|htaccess) {
+        deny all;
+        return 403;
+    }
+
+    # Configuración normal de Laravel
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+```
+
+#### Verificar que funciona
+
+```bash
+# Intentar acceder a un PHP en public/js/ (debe dar 403)
+curl -I https://tudominio.com/js/test.php
+
+# Intentar acceder a .env (debe dar 403)
+curl -I https://tudominio.com/.env
+
+# Intentar acceder a index.php (debe funcionar normalmente)
+curl -I https://tudominio.com/
 ```
 
 ### Dependencias
