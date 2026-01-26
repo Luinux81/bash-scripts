@@ -8,6 +8,9 @@ Colección de scripts útiles para Bash que facilitan tareas comunes de filesyst
   - `show-selected-files.sh`: Selector interactivo con FZF
   - `get-file-contents.sh`: Visualizador de contenido de archivos
 
+- **Security**: Scripts de seguridad para aplicaciones web
+  - `web_security_laravel.sh`: Hardening de permisos para Laravel
+
 - **Utils**: Utilidades del sistema
   - `set-clipboard.sh`: Copiar al portapapeles
 
@@ -81,6 +84,22 @@ Mostrar contenido de archivos:
 ./scripts/filesystem/get-file-contents.sh file1.js file2.js file3.js
 ```
 
+### web_security_laravel.sh
+
+Hardening de seguridad para Laravel:
+
+```bash
+# Aplicar en directorio actual (detecta tu usuario automáticamente)
+cd /var/www/myapp
+sudo ./scripts/security/web_security_laravel.sh
+
+# Especificar ruta de la aplicación
+sudo ./scripts/security/web_security_laravel.sh /var/www/myapp
+
+# Cambiar usuario web (ej: nginx)
+sudo ./scripts/security/web_security_laravel.sh /var/www/myapp --web-user nginx
+```
+
 ### set-clipboard.sh
 
 Copiar al portapapeles:
@@ -127,6 +146,7 @@ sudo pacman -S fzf xclip bat fd
 Cada directorio de scripts contiene su propio README con documentación específica:
 
 - [Scripts de Filesystem](scripts/filesystem/README.md)
+- [Scripts de Seguridad](scripts/security/README.md)
 - [Scripts de Utilidades](scripts/utils/README.md)
 
 ## 🛠️ Desarrollo
@@ -140,6 +160,9 @@ bash-scripts/
 │   │   ├── README.md
 │   │   ├── show-selected-files.sh
 │   │   └── get-file-contents.sh
+│   ├── security/        # Scripts de seguridad
+│   │   ├── README.md
+│   │   └── web_security_laravel.sh
 │   └── utils/           # Utilidades del sistema
 │       ├── README.md
 │       └── set-clipboard.sh
