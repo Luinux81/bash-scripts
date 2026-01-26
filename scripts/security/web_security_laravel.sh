@@ -114,6 +114,12 @@ if [[ -z "$APP_PATH" ]]; then
     APP_PATH="$DEFAULT_APP_PATH"
 fi
 
+# Convertir a ruta absoluta
+APP_PATH="$(cd "$APP_PATH" 2>/dev/null && pwd)" || {
+    echo -e "${COLOR_RED}Error: No se puede acceder al directorio '$APP_PATH'${COLOR_RESET}" >&2
+    exit 1
+}
+
 # --- VALIDACIONES ---
 # Verificar que el directorio existe
 if [[ ! -d "$APP_PATH" ]]; then
@@ -138,14 +144,75 @@ if ! id "$OWNER_USER" &>/dev/null; then
     exit 1
 fi
 
-# --- MOSTRAR CONFIGURACIÓN ---
+# --- VALIDACIÓN DE ESTRUCTURA LARAVEL ---
 echo ""
-echo -e "${COLOR_GREEN}🛡️ Iniciando endurecimiento de seguridad${COLOR_RESET}"
+echo -e "${COLOR_YELLOW}🔍 Verificando estructura de Laravel...${COLOR_RESET}"
+
+# Directorios típicos de Laravel
+LARAVEL_DIRS=("app" "bootstrap" "config" "database" "public" "resources" "routes" "storage")
+MISSING_DIRS=()
+FOUND_DIRS=0
+
+for dir in "${LARAVEL_DIRS[@]}"; do
+    if [[ -d "$APP_PATH/$dir" ]]; then
+        ((FOUND_DIRS++))
+    else
+        MISSING_DIRS+=("$dir")
+    fi
+done
+
+# Si faltan más de 3 directorios típicos, mostrar advertencia
+if [[ $FOUND_DIRS -lt 5 ]]; then
+    echo ""
+    echo -e "${COLOR_RED}⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}Directorios típicos de Laravel encontrados: $FOUND_DIRS de ${#LARAVEL_DIRS[@]}${COLOR_RESET}"
+
+    if [[ ${#MISSING_DIRS[@]} -gt 0 ]]; then
+        echo -e "${COLOR_YELLOW}Directorios faltantes: ${MISSING_DIRS[*]}${COLOR_RESET}"
+    fi
+
+    echo -e "${COLOR_YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    echo ""
+    echo -e "${COLOR_RED}¿Estás seguro de que quieres aplicar permisos de Laravel en este directorio?${COLOR_RESET}"
+    echo ""
+elif [[ -f "$APP_PATH/artisan" ]] && [[ -f "$APP_PATH/composer.json" ]]; then
+    echo -e "${COLOR_GREEN}✅ Estructura de Laravel detectada correctamente${COLOR_RESET}"
+else
+    echo -e "${COLOR_YELLOW}⚠️  Advertencia: Algunos archivos típicos de Laravel no fueron encontrados${COLOR_RESET}"
+fi
+
+# --- MOSTRAR CONFIGURACIÓN Y CONFIRMACIÓN ---
+echo ""
+echo -e "${COLOR_GREEN}🛡️ Configuración de Endurecimiento de Seguridad${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "📁 Aplicación:    ${COLOR_YELLOW}$APP_PATH${COLOR_RESET}"
-echo -e "👤 Propietario:   ${COLOR_YELLOW}$OWNER_USER${COLOR_RESET}"
-echo -e "🌐 Usuario Web:   ${COLOR_YELLOW}$WEB_USER${COLOR_RESET}"
+echo -e "📁 Ruta completa:  ${COLOR_YELLOW}$APP_PATH${COLOR_RESET}"
+echo -e "👤 Propietario:    ${COLOR_YELLOW}$OWNER_USER${COLOR_RESET}"
+echo -e "🌐 Usuario Web:    ${COLOR_YELLOW}$WEB_USER${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo -e "${COLOR_YELLOW}⚠️  Este script modificará los permisos de TODOS los archivos en:${COLOR_RESET}"
+echo -e "${COLOR_YELLOW}   $APP_PATH${COLOR_RESET}"
+echo ""
+echo -e "Los cambios que se aplicarán:"
+echo -e "  • Propietario: ${COLOR_YELLOW}$OWNER_USER:$WEB_USER${COLOR_RESET}"
+echo -e "  • Directorios: ${COLOR_YELLOW}755${COLOR_RESET} (rwxr-xr-x)"
+echo -e "  • Archivos: ${COLOR_YELLOW}644${COLOR_RESET} (rw-r--r--)"
+echo -e "  • storage/: ${COLOR_YELLOW}775${COLOR_RESET} (rwxrwxr-x)"
+echo -e "  • bootstrap/cache/: ${COLOR_YELLOW}775${COLOR_RESET} (rwxrwxr-x)"
+echo -e "  • .env: ${COLOR_YELLOW}640${COLOR_RESET} (rw-r-----)"
+echo ""
+
+# Prompt de confirmación
+read -p "¿Deseas continuar? (escribe 'si' para confirmar): " -r CONFIRM
+echo ""
+
+if [[ ! "$CONFIRM" =~ ^(si|SI|Si|sí|SÍ|Sí|yes|YES|Yes)$ ]]; then
+    echo -e "${COLOR_YELLOW}❌ Operación cancelada por el usuario${COLOR_RESET}"
+    exit 0
+fi
+
+echo -e "${COLOR_GREEN}✅ Confirmado. Iniciando proceso...${COLOR_RESET}"
 echo ""
 
 # 1. RESETEAR PROPIEDAD

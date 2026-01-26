@@ -86,14 +86,50 @@ sudo harden-laravel
 cd ~/.scripts-repo && git pull
 ```
 
-### Validaciones
+### Validaciones y Seguridad
 
-El script realiza las siguientes validaciones antes de ejecutar:
+El script incluye múltiples capas de validación para prevenir errores:
+
+#### Validaciones Automáticas
 
 - ✅ Verifica que el directorio de la aplicación existe
+- ✅ Convierte rutas relativas a absolutas
 - ✅ Verifica que se ejecuta con permisos de root/sudo
 - ✅ Verifica que el usuario web existe en el sistema
 - ✅ Verifica que el usuario propietario existe en el sistema
+
+#### Detección de Estructura Laravel
+
+El script analiza el directorio para verificar que es una aplicación Laravel:
+
+- Busca directorios típicos: `app`, `bootstrap`, `config`, `database`, `public`, `resources`, `routes`, `storage`
+- Verifica archivos clave: `artisan`, `composer.json`
+- **Advertencia**: Si faltan más de 3 directorios típicos, muestra un warning antes de continuar
+
+#### Confirmación Interactiva
+
+Antes de aplicar cambios, el script:
+
+1. **Muestra la ruta completa** donde se aplicarán los permisos
+2. **Lista todos los cambios** que se realizarán (propietarios, permisos)
+3. **Solicita confirmación explícita** del usuario (debe escribir "si")
+4. **Permite cancelar** en cualquier momento sin hacer cambios
+
+Ejemplo de confirmación:
+```
+⚠️  Este script modificará los permisos de TODOS los archivos en:
+   /var/www/mi-aplicacion
+
+Los cambios que se aplicarán:
+  • Propietario: usuario:www-data
+  • Directorios: 755 (rwxr-xr-x)
+  • Archivos: 644 (rw-r--r--)
+  • storage/: 775 (rwxrwxr-x)
+  • bootstrap/cache/: 775 (rwxrwxr-x)
+  • .env: 640 (rw-r-----)
+
+¿Deseas continuar? (escribe 'si' para confirmar):
+```
 
 ### Qué Hace el Script
 
@@ -156,6 +192,11 @@ composer install --no-dev --optimize-autoloader
 
 # 2. Aplicar permisos de seguridad
 sudo harden-laravel
+# El script mostrará:
+# - Verificación de estructura Laravel
+# - Ruta completa donde se aplicarán los cambios
+# - Lista de permisos que se modificarán
+# - Solicitud de confirmación (escribe 'si')
 
 # 3. Limpiar caché de Laravel
 php artisan config:cache
@@ -164,6 +205,45 @@ php artisan view:cache
 
 # 4. Verificar que todo funciona
 curl -I https://mi-app.com
+```
+
+### Ejemplo de Ejecución
+
+```text
+$ cd /var/www/mi-aplicacion
+$ sudo harden-laravel
+
+🔍 Verificando estructura de Laravel...
+✅ Estructura de Laravel detectada correctamente
+
+🛡️ Configuración de Endurecimiento de Seguridad
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 Ruta completa:  /var/www/mi-aplicacion
+👤 Propietario:    usuario
+🌐 Usuario Web:    www-data
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  Este script modificará los permisos de TODOS los archivos en:
+   /var/www/mi-aplicacion
+
+Los cambios que se aplicarán:
+  • Propietario: usuario:www-data
+  • Directorios: 755 (rwxr-xr-x)
+  • Archivos: 644 (rw-r--r--)
+  • storage/: 775 (rwxrwxr-x)
+  • bootstrap/cache/: 775 (rwxrwxr-x)
+  • .env: 640 (rw-r-----)
+
+¿Deseas continuar? (escribe 'si' para confirmar): si
+
+✅ Confirmado. Iniciando proceso...
+
+👤 Ajustando propietarios a usuario:www-data...
+🔒 Aplicando permisos 755/644 (Solo lectura para el servidor web)...
+📂 Otorgando permisos de escritura solo en storage y cache...
+🔑 Asegurando archivo .env...
+
+✅ Proceso de permisos completado. App asegurada a nivel de sistema.
 ```
 
 ### Notas de Seguridad

@@ -30,8 +30,8 @@ git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
 mkdir -p ~/bin
 
 # 3. Crear enlaces simbólicos a los scripts que necesites
-ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh ~/bin/harden-laravel
-ln -s ~/.scripts-repo/scripts/filesystem/show-selected-files.sh ~/bin/show-files
+ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh /usr/local/bin/harden-laravel
+ln -s ~/.scripts-repo/scripts/filesystem/show-selected-files.sh /usr/local/bin/show-files
 
 # 4. Añadir ~/bin al PATH (opcional pero recomendado)
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
