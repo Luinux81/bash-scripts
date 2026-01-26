@@ -111,25 +111,14 @@ El script analiza el directorio para verificar que es una aplicación Laravel:
 Antes de aplicar cambios, el script:
 
 1. **Muestra la ruta completa** donde se aplicarán los permisos
-2. **Lista todos los cambios** que se realizarán (propietarios, permisos)
-3. **Solicita confirmación explícita** del usuario (debe escribir "si")
-4. **Permite cancelar** en cualquier momento sin hacer cambios
+2. **Repite el warning de Laravel** si el directorio no parece ser una aplicación Laravel (para máxima visibilidad)
+3. **Lista todos los cambios** que se realizarán (propietarios, permisos)
+4. **Solicita confirmación explícita** del usuario (debe escribir "si")
+5. **Permite cancelar** en cualquier momento sin hacer cambios
 
-Ejemplo de confirmación:
-```
-⚠️  Este script modificará los permisos de TODOS los archivos en:
-   /var/www/mi-aplicacion
-
-Los cambios que se aplicarán:
-  • Propietario: usuario:www-data
-  • Directorios: 755 (rwxr-xr-x)
-  • Archivos: 644 (rw-r--r--)
-  • storage/: 775 (rwxrwxr-x)
-  • bootstrap/cache/: 775 (rwxrwxr-x)
-  • .env: 640 (rw-r-----)
-
-¿Deseas continuar? (escribe 'si' para confirmar):
-```
+Si el directorio **NO** parece Laravel, el warning se muestra **dos veces**:
+- Una vez durante la verificación inicial
+- **Otra vez justo antes del prompt de confirmación** (para que sea imposible pasarlo por alto)
 
 ### Qué Hace el Script
 
@@ -209,6 +198,8 @@ curl -I https://mi-app.com
 
 ### Ejemplo de Ejecución
 
+#### Caso 1: Aplicación Laravel Válida
+
 ```text
 $ cd /var/www/mi-aplicacion
 $ sudo harden-laravel
@@ -244,6 +235,46 @@ Los cambios que se aplicarán:
 🔑 Asegurando archivo .env...
 
 ✅ Proceso de permisos completado. App asegurada a nivel de sistema.
+```
+
+#### Caso 2: Directorio que NO parece Laravel
+
+```text
+$ cd /home/usuario/temporal
+$ sudo harden-laravel
+
+🔍 Verificando estructura de Laravel...
+⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel
+   Directorios típicos encontrados: 2 de 8
+   Directorios faltantes: app config database public resources routes
+
+🛡️ Configuración de Endurecimiento de Seguridad
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 Ruta completa:  /home/usuario/temporal
+👤 Propietario:    usuario
+🌐 Usuario Web:    www-data
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Directorios típicos de Laravel encontrados: 2 de 8
+   Directorios faltantes: app config database public resources routes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  Este script modificará los permisos de TODOS los archivos en:
+   /home/usuario/temporal
+
+Los cambios que se aplicarán:
+  • Propietario: usuario:www-data
+  • Directorios: 755 (rwxr-xr-x)
+  • Archivos: 644 (rw-r--r--)
+  • storage/: 775 (rwxrwxr-x)
+  • bootstrap/cache/: 775 (rwxrwxr-x)
+  • .env: 640 (rw-r-----)
+
+¿Deseas continuar? (escribe 'si' para confirmar): n
+
+❌ Operación cancelada por el usuario
 ```
 
 ### Notas de Seguridad

@@ -152,6 +152,7 @@ echo -e "${COLOR_YELLOW}🔍 Verificando estructura de Laravel...${COLOR_RESET}"
 LARAVEL_DIRS=("app" "bootstrap" "config" "database" "public" "resources" "routes" "storage")
 MISSING_DIRS=()
 FOUND_DIRS=0
+LARAVEL_WARNING=""
 
 for dir in "${LARAVEL_DIRS[@]}"; do
     if [[ -d "$APP_PATH/$dir" ]]; then
@@ -161,25 +162,21 @@ for dir in "${LARAVEL_DIRS[@]}"; do
     fi
 done
 
-# Si faltan más de 3 directorios típicos, mostrar advertencia
+# Determinar el estado de la validación
 if [[ $FOUND_DIRS -lt 5 ]]; then
-    echo ""
     echo -e "${COLOR_RED}⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel${COLOR_RESET}"
-    echo -e "${COLOR_YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-    echo -e "${COLOR_YELLOW}Directorios típicos de Laravel encontrados: $FOUND_DIRS de ${#LARAVEL_DIRS[@]}${COLOR_RESET}"
-
+    echo -e "${COLOR_YELLOW}   Directorios típicos encontrados: $FOUND_DIRS de ${#LARAVEL_DIRS[@]}${COLOR_RESET}"
     if [[ ${#MISSING_DIRS[@]} -gt 0 ]]; then
-        echo -e "${COLOR_YELLOW}Directorios faltantes: ${MISSING_DIRS[*]}${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   Directorios faltantes: ${MISSING_DIRS[*]}${COLOR_RESET}"
     fi
-
-    echo -e "${COLOR_YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-    echo ""
-    echo -e "${COLOR_RED}¿Estás seguro de que quieres aplicar permisos de Laravel en este directorio?${COLOR_RESET}"
-    echo ""
+    # Guardar el warning para mostrarlo en la confirmación
+    LARAVEL_WARNING="NOT_LARAVEL"
 elif [[ -f "$APP_PATH/artisan" ]] && [[ -f "$APP_PATH/composer.json" ]]; then
     echo -e "${COLOR_GREEN}✅ Estructura de Laravel detectada correctamente${COLOR_RESET}"
+    LARAVEL_WARNING=""
 else
     echo -e "${COLOR_YELLOW}⚠️  Advertencia: Algunos archivos típicos de Laravel no fueron encontrados${COLOR_RESET}"
+    LARAVEL_WARNING="PARTIAL"
 fi
 
 # --- MOSTRAR CONFIGURACIÓN Y CONFIRMACIÓN ---
@@ -191,6 +188,22 @@ echo -e "👤 Propietario:    ${COLOR_YELLOW}$OWNER_USER${COLOR_RESET}"
 echo -e "🌐 Usuario Web:    ${COLOR_YELLOW}$WEB_USER${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# Mostrar warning de Laravel si existe
+if [[ "$LARAVEL_WARNING" == "NOT_LARAVEL" ]]; then
+    echo -e "${COLOR_RED}⚠️  ADVERTENCIA: Este directorio NO parece ser una aplicación Laravel${COLOR_RESET}"
+    echo -e "${COLOR_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}   Directorios típicos de Laravel encontrados: $FOUND_DIRS de ${#LARAVEL_DIRS[@]}${COLOR_RESET}"
+    if [[ ${#MISSING_DIRS[@]} -gt 0 ]]; then
+        echo -e "${COLOR_YELLOW}   Directorios faltantes: ${MISSING_DIRS[*]}${COLOR_RESET}"
+    fi
+    echo -e "${COLOR_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    echo ""
+elif [[ "$LARAVEL_WARNING" == "PARTIAL" ]]; then
+    echo -e "${COLOR_YELLOW}⚠️  Advertencia: Algunos archivos típicos de Laravel no fueron encontrados${COLOR_RESET}"
+    echo ""
+fi
+
 echo -e "${COLOR_YELLOW}⚠️  Este script modificará los permisos de TODOS los archivos en:${COLOR_RESET}"
 echo -e "${COLOR_YELLOW}   $APP_PATH${COLOR_RESET}"
 echo ""
