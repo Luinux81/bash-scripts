@@ -273,10 +273,13 @@ else
     FOUND_INDEX_ONLY=false
     FOUND_DOTFILES_PROTECTION=false
     FOUND_DANGEROUS_EXTENSIONS=false
+    FOUND_MATCHING_CONFIG=false
 
     for config in $NGINX_CONFIGS; do
         # Verificar si el config apunta al directorio de la aplicación
-        if grep -q "root.*$APP_PATH" "$config" 2>/dev/null || [[ "$config" =~ $(basename "$APP_PATH") ]]; then
+        # Buscar líneas "root" que apunten exactamente a $APP_PATH/public o $APP_PATH
+        if grep -q "root[[:space:]]*$APP_PATH/public" "$config" 2>/dev/null || grep -q "root[[:space:]]*$APP_PATH[[:space:]]*;" "$config" 2>/dev/null; then
+            FOUND_MATCHING_CONFIG=true
             check_info "Analizando: $(basename "$config")"
 
             # Regla 1: Protección de PHP (método quirúrgico o regex)
@@ -307,21 +310,27 @@ else
         fi
     done
 
-    # Verificar que al menos tengamos protección básica de PHP
-    if $FOUND_INDEX_ONLY || $FOUND_PHP_PROTECTION; then
-        if ! $FOUND_INDEX_ONLY; then
-            check_warn "No se encontró 'location = /index.php' (recomendado para máxima seguridad)"
-        fi
-        if ! $FOUND_PHP_PROTECTION; then
-            check_warn "No se encontró bloqueo explícito de otros archivos PHP"
-        fi
+    # Si no se encontró ninguna configuración que coincida
+    if ! $FOUND_MATCHING_CONFIG; then
+        check_warn "No se encontró configuración de Nginx para esta aplicación ($APP_PATH)"
+        check_info "Verifica que exista un archivo en /etc/nginx/sites-enabled/ con 'root $APP_PATH/public;'"
     else
-        check_fail "NO se encontró protección de archivos PHP en Nginx"
-    fi
+        # Verificar que al menos tengamos protección básica de PHP
+        if $FOUND_INDEX_ONLY || $FOUND_PHP_PROTECTION; then
+            if ! $FOUND_INDEX_ONLY; then
+                check_warn "No se encontró 'location = /index.php' (recomendado para máxima seguridad)"
+            fi
+            if ! $FOUND_PHP_PROTECTION; then
+                check_warn "No se encontró bloqueo explícito de otros archivos PHP"
+            fi
+        else
+            check_fail "NO se encontró protección de archivos PHP en Nginx"
+        fi
 
-    # Verificar protección de archivos sensibles
-    if ! $FOUND_DOTFILES_PROTECTION && ! $FOUND_DANGEROUS_EXTENSIONS; then
-        check_warn "No se encontró protección de archivos sensibles (.env, .git, etc.)"
+        # Verificar protección de archivos sensibles
+        if ! $FOUND_DOTFILES_PROTECTION && ! $FOUND_DANGEROUS_EXTENSIONS; then
+            check_warn "No se encontró protección de archivos sensibles (.env, .git, etc.)"
+        fi
     fi
 fi
 
