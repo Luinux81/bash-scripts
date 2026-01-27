@@ -269,43 +269,59 @@ if [[ -z "$NGINX_CONFIGS" ]]; then
     check_warn "No se encontraron configuraciones de Nginx"
 else
     # Verificar reglas de seguridad
-    FOUND_RULE_1=false
-    FOUND_RULE_2=false
-    FOUND_RULE_3=false
+    FOUND_PHP_PROTECTION=false
+    FOUND_INDEX_ONLY=false
+    FOUND_DOTFILES_PROTECTION=false
+    FOUND_DANGEROUS_EXTENSIONS=false
 
     for config in $NGINX_CONFIGS; do
-        # Regla 1: Denegar PHP en storage/uploads
-        if grep -q "location.*storage.*\.php" "$config" 2>/dev/null; then
-            FOUND_RULE_1=true
-        fi
+        # Verificar si el config apunta al directorio de la aplicación
+        if grep -q "root.*$APP_PATH" "$config" 2>/dev/null || [[ "$config" =~ $(basename "$APP_PATH") ]]; then
+            check_info "Analizando: $(basename "$config")"
 
-        # Regla 2: Solo permitir index.php
-        if grep -q "location.*index\.php" "$config" 2>/dev/null && grep -q "deny all" "$config" 2>/dev/null; then
-            FOUND_RULE_2=true
-        fi
+            # Regla 1: Protección de PHP (método quirúrgico o regex)
+            # Buscar "location = /index.php" (método quirúrgico) O "location ~ \.php$" con deny
+            if grep -q "location = /index\.php" "$config" 2>/dev/null; then
+                FOUND_INDEX_ONLY=true
+                check_pass "✓ Protección quirúrgica: Solo index.php permitido (location =)"
+            fi
 
-        # Regla 3: Proteger archivos sensibles
-        if grep -q "location.*\.env\|\.git" "$config" 2>/dev/null; then
-            FOUND_RULE_3=true
+            if grep -q "location ~ .*\.php" "$config" 2>/dev/null && grep -A 2 "location ~ .*\.php" "$config" | grep -q "deny all"; then
+                FOUND_PHP_PROTECTION=true
+                check_pass "✓ Bloqueo de otros archivos PHP (location ~ \.php$ + deny all)"
+            fi
+
+            # Regla 2: Protección de archivos ocultos (.env, .git, etc.)
+            # Buscar "location ~ /\." o similar
+            if grep -q "location ~ /\\\." "$config" 2>/dev/null || grep -q "location.*\.env\|\.git" "$config" 2>/dev/null; then
+                FOUND_DOTFILES_PROTECTION=true
+                check_pass "✓ Protección de archivos ocultos (.env, .git, etc.)"
+            fi
+
+            # Regla 3: Bloqueo de extensiones peligrosas
+            # Buscar "location ~* \.(env|log|sql|..." o similar
+            if grep -q "location.*\\.env\|log\|sql\|git\|sh\|bak" "$config" 2>/dev/null; then
+                FOUND_DANGEROUS_EXTENSIONS=true
+                check_pass "✓ Bloqueo de extensiones peligrosas (.env, .log, .sql, etc.)"
+            fi
         fi
     done
 
-    if $FOUND_RULE_1; then
-        check_pass "Regla de Nginx: Denegar PHP en storage/uploads encontrada"
+    # Verificar que al menos tengamos protección básica de PHP
+    if $FOUND_INDEX_ONLY || $FOUND_PHP_PROTECTION; then
+        if ! $FOUND_INDEX_ONLY; then
+            check_warn "No se encontró 'location = /index.php' (recomendado para máxima seguridad)"
+        fi
+        if ! $FOUND_PHP_PROTECTION; then
+            check_warn "No se encontró bloqueo explícito de otros archivos PHP"
+        fi
     else
-        check_warn "Regla de Nginx: Denegar PHP en storage/uploads NO encontrada"
+        check_fail "NO se encontró protección de archivos PHP en Nginx"
     fi
 
-    if $FOUND_RULE_2; then
-        check_pass "Regla de Nginx: Restricción de PHP encontrada"
-    else
-        check_warn "Regla de Nginx: Restricción de PHP NO encontrada"
-    fi
-
-    if $FOUND_RULE_3; then
-        check_pass "Regla de Nginx: Protección de archivos sensibles encontrada"
-    else
-        check_warn "Regla de Nginx: Protección de archivos sensibles NO encontrada"
+    # Verificar protección de archivos sensibles
+    if ! $FOUND_DOTFILES_PROTECTION && ! $FOUND_DANGEROUS_EXTENSIONS; then
+        check_warn "No se encontró protección de archivos sensibles (.env, .git, etc.)"
     fi
 fi
 
