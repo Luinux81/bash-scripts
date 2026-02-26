@@ -112,8 +112,13 @@ can_write() {
         if [[ "$(whoami)" == "$user" ]]; then
             test -w "$path"
         else
-            # No podemos verificar, retornamos éxito para no dar falso negativo
-            return 0
+            # No podemos verificar, retornamos éxito para directorios
+            # pero fallaremos en archivos sensibles como .env
+            if [[ -d "$path" ]]; then
+                return 0
+            else
+                return 1
+            fi
         fi
     fi
 }
@@ -256,12 +261,33 @@ if [[ -f "$APP_PATH/.env" ]]; then
     
     # .env NO debe ser escribible por www-data
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    if can_write "$WEB_USER" "$APP_PATH/.env"; then
-        echo -e "${COLOR_RED}❌ $WEB_USER puede escribir .env (riesgo de seguridad)${COLOR_RESET}"
-        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    
+    # Si no somos root, verificar por permisos en lugar de test -w
+    if [[ $EUID -ne 0 ]]; then
+        # Obtener permisos del archivo
+        env_perms=$(stat -c '%a' "$APP_PATH/.env" 2>/dev/null || stat -f '%A' "$APP_PATH/.env" 2>/dev/null)
+        env_perms_normalized=$(normalize_perms "$env_perms")
+        
+        # Verificar si el grupo tiene permiso de escritura (segundo dígito debe ser 4 o 0, no 6)
+        group_perm="${env_perms_normalized:1:1}"
+        
+        if [[ "$group_perm" -ge 6 ]]; then
+            echo -e "${COLOR_RED}❌ $WEB_USER puede escribir .env (riesgo de seguridad)${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}   El grupo tiene permisos de escritura. Ejecuta: chmod 640 .env${COLOR_RESET}"
+            FAILED_CHECKS=$((FAILED_CHECKS + 1))
+        else
+            echo -e "${COLOR_GREEN}✅ $WEB_USER NO puede escribir .env (seguro)${COLOR_RESET}"
+            PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        fi
     else
-        echo -e "${COLOR_GREEN}✅ $WEB_USER NO puede escribir .env (seguro)${COLOR_RESET}"
-        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        # Si somos root, podemos hacer la verificación real
+        if can_write "$WEB_USER" "$APP_PATH/.env"; then
+            echo -e "${COLOR_RED}❌ $WEB_USER puede escribir .env (riesgo de seguridad)${COLOR_RESET}"
+            FAILED_CHECKS=$((FAILED_CHECKS + 1))
+        else
+            echo -e "${COLOR_GREEN}✅ $WEB_USER NO puede escribir .env (seguro)${COLOR_RESET}"
+            PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        fi
     fi
 fi
 
