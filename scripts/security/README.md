@@ -8,7 +8,7 @@ Endurece la seguridad de aplicaciones Laravel a nivel de sistema de archivos.
 
 Configura automáticamente permisos y propietarios de archivos para minimizar riesgos de seguridad en aplicaciones Laravel en producción. Implementa el principio de mínimo privilegio, permitiendo al servidor web solo los permisos estrictamente necesarios.
 
-**Ideal para:** Servidores de producción, VPS, entornos compartidos.
+**Ideal para:** Servidores de producción, VPS, entornos compartidos, pipelines de CI/CD.
 
 ### Uso
 
@@ -36,6 +36,10 @@ sudo ./web_security_laravel.sh [APP_PATH] [OPCIONES]
   - Debe ser un usuario existente en el sistema
   - Automáticamente detecta el usuario real cuando se usa sudo
 
+- `--force`: Omite la confirmación interactiva
+  - Útil para scripts automatizados, pipelines de CI/CD, o despliegues automáticos
+  - **⚠️ PRECAUCIÓN**: Asegúrate de estar en el directorio correcto antes de usar esta opción
+
 - `-h, --help`: Muestra la ayuda del script
 
 ### Ejemplos
@@ -56,6 +60,12 @@ sudo ./web_security_laravel.sh /var/www/myapp --web-user nginx --owner deploy
 
 # Los parámetros pueden ir en cualquier orden
 sudo ./web_security_laravel.sh --owner john --web-user www-data /var/www/app
+
+# Ejecutar sin confirmación (ideal para automatización)
+sudo ./web_security_laravel.sh /var/www/myapp --force
+
+# Combinar --force con otros parámetros
+sudo ./web_security_laravel.sh /var/www/myapp --web-user nginx --owner deploy --force
 
 # Ver ayuda completa
 ./web_security_laravel.sh --help
@@ -116,7 +126,10 @@ Antes de aplicar cambios, el script:
 4. **Solicita confirmación explícita** del usuario (debe escribir "si")
 5. **Permite cancelar** en cualquier momento sin hacer cambios
 
+**Nota sobre --force**: Al usar el parámetro `--force`, se omite el paso de confirmación interactiva. El script mostrará toda la información de configuración y advertencias, pero procederá automáticamente sin solicitar confirmación.
+
 Si el directorio **NO** parece Laravel, el warning se muestra **dos veces**:
+
 - Una vez durante la verificación inicial
 - **Otra vez justo antes del prompt de confirmación** (para que sea imposible pasarlo por alto)
 
@@ -132,55 +145,11 @@ Si el directorio **NO** parece Laravel, el warning se muestra **dos veces**:
 
 **⚠️ CRÍTICO PARA SEGURIDAD**: Después de ejecutar el script, debes configurar Nginx para completar el endurecimiento.
 
+El script proporciona al final las instrucciones exactas de Nginx que debes añadir. A continuación se explica en detalle:
+
+#### Configuración Completa Recomendada
+
 Añade estas reglas a tu configuración de Nginx (`/etc/nginx/sites-available/tu-sitio`, dentro del bloque `server`):
-
-#### Regla 1: Denegar ejecución de PHP en directorios de uploads/storage
-
-```nginx
-# Previene ejecución de scripts maliciosos subidos por usuarios
-location ~* ^/(storage|public/storage|uploads|images|public/images)/.*\.php$ {
-    deny all;
-    return 403;
-}
-```
-
-#### Regla 2: Solo permitir index.php en public/
-
-```nginx
-# En Laravel, SOLO index.php debe ejecutarse en public/
-# Todo lo demás son assets estáticos (CSS, JS, imágenes)
-location ~* ^/(?!index\.php$).+\.php$ {
-    deny all;
-    return 403;
-}
-```
-
-**¿Por qué esta regla?** En tu directorio `public/` tienes subdirectorios como `js/`, `css/`, `images/`, `build/`, etc. Todos contienen solo archivos estáticos. Esta regla previene que se ejecute cualquier archivo PHP que no sea `index.php`, protegiendo contra:
-- Archivos PHP maliciosos en subdirectorios de `public/`
-- Scripts de prueba olvidados (test.php, info.php, phpinfo.php)
-- Exploits que intentan ejecutar PHP en directorios de assets
-
-#### Regla 3: Denegar acceso a archivos sensibles
-
-```nginx
-# Protege archivos de configuración y control de versiones
-location ~ /\.(env|git|svn|htaccess) {
-    deny all;
-    return 403;
-}
-```
-
-#### Aplicar los cambios
-
-```bash
-# Verificar sintaxis
-sudo nginx -t
-
-# Si todo está OK, recargar
-sudo systemctl reload nginx
-```
-
-#### Ejemplo de configuración completa de Nginx
 
 ```nginx
 server {
@@ -190,49 +159,215 @@ server {
 
     index index.php index.html;
 
-    # Regla 1: Denegar PHP en uploads/storage
-    location ~* ^/(storage|public/storage|uploads|images|public/images)/.*\.php$ {
+    # --- SEGURIDAD WEB ---
+
+    # 1. PERMITIR ÚNICAMENTE el punto de entrada de Laravel
+    # El uso de "=" da prioridad máxima y exclusividad.
+    location = /index.php {
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By; # Oculta que usas PHP
+    }
+
+    # 2. BLOQUEAR CUALQUIER OTRO ARCHIVO .php
+    # Cualquier intento de ejecutar otro archivo .php en public o subcarpetas
+    # morirá aquí con un 403, protegiéndote de WebShells subidas.
+    location ~ \.php$ {
         deny all;
         return 403;
     }
 
-    # Regla 2: Solo permitir index.php
-    location ~* ^/(?!index\.php$).+\.php$ {
+    # --- BLOQUEO DE ARCHIVOS SENSIBLES Y OCULTOS ---
+
+    # Bloquear archivos que empiezan por punto (.env, .git, .htaccess, etc.)
+    # Exceptuamos .well-known para que Certbot pueda renovar certificados.
+    location ~ /\.(?!well-known).* {
         deny all;
-        return 403;
     }
 
-    # Regla 3: Proteger archivos sensibles
-    location ~ /\.(env|git|svn|htaccess) {
+    # Bloquear extensiones peligrosas o de backup
+    location ~* \.(env|log|sql|git|sh|bak|config|php~)$ {
         deny all;
-        return 403;
     }
 
     # Configuración normal de Laravel
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
 }
+```
+
+#### Explicación de las Reglas de Seguridad
+
+##### **Regla 1: Solo permitir index.php**
+
+```nginx
+location = /index.php {
+    fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+    fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    include fastcgi_params;
+    fastcgi_hide_header X-Powered-By;
+}
+```
+
+- El operador `=` da máxima prioridad y hace que esta regla sea exclusiva
+- Solo `index.php` puede ejecutarse como PHP
+- `fastcgi_hide_header X-Powered-By` oculta información sobre PHP en las cabeceras HTTP
+
+##### **Regla 2: Bloquear todos los demás archivos PHP**
+
+```nginx
+location ~ \.php$ {
+    deny all;
+    return 403;
+}
+```
+
+- Cualquier archivo `.php` que no sea `index.php` será bloqueado
+- Protege contra:
+  - WebShells subidos maliciosamente
+  - Scripts de prueba olvidados (test.php, info.php, phpinfo.php)
+  - Exploits que intentan ejecutar PHP en subdirectorios de `public/`
+
+##### **Regla 3: Bloquear archivos ocultos (excepto .well-known)**
+
+```nginx
+location ~ /\.(?!well-known).* {
+    deny all;
+}
+```
+
+- Bloquea acceso a archivos que empiezan con punto: `.env`, `.git`, `.htaccess`, etc.
+- Permite `.well-known` para que Certbot pueda renovar certificados SSL
+
+##### **Regla 4: Bloquear extensiones peligrosas**
+
+```nginx
+location ~* \.(env|log|sql|git|sh|bak|config|php~)$ {
+    deny all;
+}
+```
+
+- Bloquea archivos de configuración, logs, backups y scripts
+- Protege información sensible
+
+#### Aplicar los cambios
+
+```bash
+# Verificar sintaxis de Nginx
+sudo nginx -t
+
+# Si todo está OK, recargar Nginx
+sudo systemctl reload nginx
 ```
 
 #### Verificar que funciona
 
 ```bash
-# Intentar acceder a un PHP en public/js/ (debe dar 403)
-curl -I https://tudominio.com/js/test.php
+# Intentar acceder a un PHP que no sea index.php (debe dar 403)
+curl -I https://tudominio.com/test.php
 
 # Intentar acceder a .env (debe dar 403)
 curl -I https://tudominio.com/.env
 
-# Intentar acceder a index.php (debe funcionar normalmente)
+# Intentar acceder a un archivo de backup (debe dar 403)
+curl -I https://tudominio.com/config.bak
+
+# Acceso normal a la aplicación (debe funcionar)
 curl -I https://tudominio.com/
+```
+
+### Uso en CI/CD y Automatización
+
+El parámetro `--force` hace que este script sea ideal para pipelines de CI/CD:
+
+#### Ejemplo con GitHub Actions
+
+```yaml
+name: Deploy Laravel
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/myapp
+            git pull origin main
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            
+            # Aplicar permisos de seguridad automáticamente
+            sudo /home/deploy/bin/harden-laravel --force
+            
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+```
+
+#### Ejemplo con GitLab CI/CD
+
+```yaml
+deploy:
+  stage: deploy
+  script:
+    - ssh $DEPLOY_USER@$DEPLOY_HOST "
+        cd /var/www/myapp &&
+        git pull origin main &&
+        composer install --no-dev --optimize-autoloader &&
+        php artisan migrate --force &&
+        sudo harden-laravel --force &&
+        php artisan config:cache
+      "
+  only:
+    - main
+```
+
+#### Script de Deploy Personalizado
+
+```bash
+#!/bin/bash
+# deploy.sh - Script de despliegue automatizado
+
+set -e
+
+APP_PATH="/var/www/myapp"
+
+echo "🚀 Iniciando despliegue..."
+
+# Actualizar código
+cd "$APP_PATH"
+git pull origin main
+
+# Instalar dependencias
+composer install --no-dev --optimize-autoloader
+
+# Migraciones
+php artisan migrate --force
+
+# Aplicar seguridad (sin confirmación)
+sudo harden-laravel "$APP_PATH" --force
+
+# Optimizaciones
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# Reiniciar servicios
+sudo systemctl reload php8.3-fpm
+sudo systemctl reload nginx
+
+echo "✅ Despliegue completado"
 ```
 
 ### Dependencias
@@ -248,6 +383,7 @@ curl -I https://tudominio.com/
 - ✅ Protección del archivo .env
 - ✅ Prevención de ejecución de scripts maliciosos
 - ✅ Separación de propietario y grupo
+- ✅ Modo automatizado para CI/CD con `--force`
 
 ### Cuándo Usar
 
@@ -257,8 +393,11 @@ curl -I https://tudominio.com/
 - ✅ Cuando se detectan permisos incorrectos
 - ✅ Al configurar un nuevo VPS para Laravel
 - ✅ Después de clonar un repositorio en producción
+- ✅ En pipelines de CI/CD (con `--force`)
 
 ### Flujo de Trabajo Típico en Producción
+
+#### Despliegue Manual
 
 ```bash
 # 1. Desplegar código (git pull, composer install, etc.)
@@ -283,9 +422,26 @@ php artisan view:cache
 curl -I https://mi-app.com
 ```
 
+#### Despliegue Automatizado
+
+```bash
+# 1. Desplegar código
+cd /var/www/mi-app
+git pull origin main
+composer install --no-dev --optimize-autoloader
+
+# 2. Aplicar permisos de seguridad (sin confirmación)
+sudo harden-laravel --force
+
+# 3. Limpiar caché de Laravel
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
 ### Ejemplo de Ejecución
 
-#### Caso 1: Aplicación Laravel Válida
+#### Caso 1: Aplicación Laravel Válida (Modo Normal)
 
 ```text
 $ cd /var/www/mi-aplicacion
@@ -321,10 +477,58 @@ Los cambios que se aplicarán:
 📂 Otorgando permisos de escritura solo en storage y cache...
 🔑 Asegurando archivo .env...
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Proceso de permisos completado. App asegurada a nivel de sistema.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  ¡ATENCIÓN: CONFIGURACIÓN REQUERIDA EN NGINX! ⚠️
+
+Para completar el endurecimiento de seguridad, añade esta sección
+a tu configuración de Nginx (dentro del bloque 'server'):
+...
 ```
 
-#### Caso 2: Directorio que NO parece Laravel
+#### Caso 2: Aplicación Laravel Válida (Modo --force)
+
+```text
+$ cd /var/www/mi-aplicacion
+$ sudo harden-laravel --force
+
+🔍 Verificando estructura de Laravel...
+✅ Estructura de Laravel detectada correctamente
+
+🛡️ Configuración de Endurecimiento de Seguridad
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 Ruta completa:  /var/www/mi-aplicacion
+👤 Propietario:    usuario
+🌐 Usuario Web:    www-data
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  Este script modificará los permisos de TODOS los archivos en:
+   /var/www/mi-aplicacion
+
+Los cambios que se aplicarán:
+  • Propietario: usuario:www-data
+  • Directorios: 755 (rwxr-xr-x)
+  • Archivos: 644 (rw-r--r--)
+  • storage/: 775 (rwxrwxr-x)
+  • bootstrap/cache/: 775 (rwxrwxr-x)
+  • .env: 640 (rw-r-----)
+
+✅ Modo --force activado. Procediendo sin confirmación...
+
+👤 Ajustando propietarios a usuario:www-data...
+🔒 Aplicando permisos 755/644 (Solo lectura para el servidor web)...
+📂 Otorgando permisos de escritura solo en storage y cache...
+🔑 Asegurando archivo .env...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Proceso de permisos completado. App asegurada a nivel de sistema.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+...
+```
+
+#### Caso 3: Directorio que NO parece Laravel
 
 ```text
 $ cd /home/usuario/temporal
@@ -370,29 +574,98 @@ Los cambios que se aplicarán:
 - **Solo para producción**: Diseñado para entornos de producción
 - **Backup recomendado**: Haz backup antes de cambiar permisos masivamente
 - **Verificar después**: Comprueba que la aplicación funciona correctamente
+- **Usar --force con cuidado**: Asegúrate de estar en el directorio correcto antes de usar `--force`
 
 ### Solución de Problemas
 
-**Error: Permission denied al escribir logs**
+#### **Error: Permission denied al escribir logs**
+
 ```bash
 # Verificar permisos de storage
 ls -la /ruta/app/storage
 # Debe mostrar 775 y grupo www-data
+
+# Si es necesario, volver a aplicar permisos
+sudo harden-laravel /ruta/app --force
 ```
 
-**Error: .env no se puede leer**
+#### **Error: .env no se puede leer**
+
 ```bash
 # Verificar permisos del .env
 ls -la /ruta/app/.env
 # Debe mostrar 640 y grupo www-data
+
+# Verificar que PHP-FPM corre como www-data
+ps aux | grep php-fpm
 ```
 
-**La aplicación no funciona después del script**
+#### **La aplicación no funciona después del script**
+
 ```bash
 # Verificar que el usuario web está en el grupo correcto
 groups www-data
 
-# Revertir permisos si es necesario
+# Verificar logs de Laravel
+sudo tail -f /ruta/app/storage/logs/laravel.log
+
+# Verificar logs de Nginx
+sudo tail -f /var/log/nginx/error.log
+
+# Revertir permisos si es necesario (solo en emergencia)
 sudo chmod -R 775 /ruta/app/storage
+sudo chmod -R 775 /ruta/app/bootstrap/cache
 ```
 
+#### **Nginx retorna 403 después de aplicar las reglas**
+
+```bash
+# Verificar que index.php existe
+ls -la /ruta/app/public/index.php
+
+# Verificar configuración de Nginx
+sudo nginx -t
+
+# Revisar logs de Nginx
+sudo tail -f /var/log/nginx/error.log
+
+# Verificar que la ruta 'root' en Nginx apunta a /public
+# Debe ser: root /var/www/tu-app/public;
+```
+
+#### **El script no encuentra el directorio**
+
+```bash
+# Usar ruta absoluta
+sudo harden-laravel /var/www/myapp
+
+# O navegar al directorio primero
+cd /var/www/myapp
+sudo harden-laravel
+```
+
+### Preguntas Frecuentes
+
+**¿Puedo usar este script en desarrollo local?**
+
+No es recomendable. Este script está diseñado para entornos de producción. En desarrollo, necesitas permisos más permisivos para que herramientas como `php artisan` funcionen correctamente.
+
+**¿Qué pasa si ejecuto el script dos veces?**
+
+No hay problema. El script es idempotente, puedes ejecutarlo múltiples veces sin causar daños. Simplemente restablecerá los permisos a los valores correctos.
+
+**¿Funciona con Apache en lugar de Nginx?**
+
+Sí, los permisos de filesystem funcionan igual. Sin embargo, las reglas de seguridad web mostradas al final son específicas de Nginx. Para Apache, necesitarías configurar equivalentes en `.htaccess` o en la configuración del VirtualHost.
+
+**¿Puedo personalizar los permisos?**
+
+Los permisos están hardcodeados porque representan las mejores prácticas de seguridad para Laravel. Si necesitas permisos diferentes, tendrías que modificar el script.
+
+**¿El parámetro --force es seguro?**
+
+Es seguro si lo usas correctamente. Asegúrate siempre de:
+
+- Estar en el directorio correcto antes de ejecutarlo
+- Verificar la ruta con `pwd` o especificarla explícitamente
+- Usarlo solo en scripts automatizados donde confías en el contexto de ejecución

@@ -7,11 +7,12 @@
 #   Configura permisos y propietarios de archivos para minimizar
 #   riesgos de seguridad en aplicaciones Laravel en producción.
 # USAGE
-#   sudo ./web_security_laravel.sh [APP_PATH] [--web-user USER] [--owner USER]
+#   sudo ./web_security_laravel.sh [APP_PATH] [--web-user USER] [--owner USER] [--force]
 # EXAMPLES
 #   sudo ./web_security_laravel.sh /var/www/myapp
 #   sudo ./web_security_laravel.sh /var/www/myapp --web-user nginx --owner deploy
-#   sudo ./web_security_laravel.sh --web-user www-data --owner john /var/www/app
+#   sudo ./web_security_laravel.sh /var/www/myapp --force
+#   sudo ./web_security_laravel.sh --web-user www-data --owner john /var/www/app --force
 # NOTES
 #   - Requiere permisos de superusuario (sudo)
 #   - Recuerda configurar Nginx según las instrucciones finales
@@ -46,6 +47,7 @@ OPCIONES:
                             Default: www-data
     --owner USER            Usuario propietario de los archivos
                             Default: usuario que ejecuta sudo (o usuario actual)
+    --force                 Omite la confirmación interactiva
     -h, --help              Muestra esta ayuda
 
 EJEMPLOS:
@@ -61,6 +63,9 @@ EJEMPLOS:
     # Especificar todos los parámetros
     sudo $0 /var/www/myapp --web-user nginx --owner deploy
 
+    # Ejecutar sin confirmación (útil para scripts automatizados)
+    sudo $0 /var/www/myapp --force
+
 NOTA: Este script debe ejecutarse con sudo o como root.
 EOF
     exit 0
@@ -70,6 +75,7 @@ EOF
 APP_PATH=""
 WEB_USER="$DEFAULT_WEB_USER"
 OWNER_USER="$DEFAULT_OWNER_USER"
+FORCE_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -91,6 +97,10 @@ while [[ $# -gt 0 ]]; do
             fi
             OWNER_USER="$2"
             shift 2
+            ;;
+        --force)
+            FORCE_MODE=true
+            shift
             ;;
         -*)
             echo -e "${COLOR_RED}Error: Opción desconocida: $1${COLOR_RESET}" >&2
@@ -218,16 +228,20 @@ echo -e "  • bootstrap/cache/: ${COLOR_YELLOW}775${COLOR_RESET} (rwxrwxr-x)"
 echo -e "  • .env: ${COLOR_YELLOW}640${COLOR_RESET} (rw-r-----)"
 echo ""
 
-# Prompt de confirmación
-read -p "¿Deseas continuar? (escribe 'si' para confirmar): " -r CONFIRM
-echo ""
+# Prompt de confirmación (omitir si --force está activo)
+if [[ "$FORCE_MODE" == false ]]; then
+    read -p "¿Deseas continuar? (escribe 'si' para confirmar): " -r CONFIRM
+    echo ""
 
-if [[ ! "$CONFIRM" =~ ^(si|SI|Si|sí|SÍ|Sí|yes|YES|Yes)$ ]]; then
-    echo -e "${COLOR_YELLOW}❌ Operación cancelada por el usuario${COLOR_RESET}"
-    exit 0
+    if [[ ! "$CONFIRM" =~ ^(si|SI|Si|sí|SÍ|Sí|yes|YES|Yes)$ ]]; then
+        echo -e "${COLOR_YELLOW}❌ Operación cancelada por el usuario${COLOR_RESET}"
+        exit 0
+    fi
+
+    echo -e "${COLOR_GREEN}✅ Confirmado. Iniciando proceso...${COLOR_RESET}"
+else
+    echo -e "${COLOR_GREEN}✅ Modo --force activado. Procediendo sin confirmación...${COLOR_RESET}"
 fi
-
-echo -e "${COLOR_GREEN}✅ Confirmado. Iniciando proceso...${COLOR_RESET}"
 echo ""
 
 # 1. RESETEAR PROPIEDAD
@@ -309,4 +323,3 @@ echo -e "${COLOR_GREEN}  sudo nginx -t${COLOR_RESET}"
 echo -e "${COLOR_GREEN}  sudo systemctl reload nginx${COLOR_RESET}"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
