@@ -332,12 +332,31 @@ if [[ -n "$NGINX_CONFIG" ]]; then
     
     # Verificar protección de PHP (nueva configuración)
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-    if grep -q 'location.*=.*/index\.php' "$NGINX_CONFIG" && \
-       grep -q 'location.*~.*\\\.php.*deny all' "$NGINX_CONFIG"; then
+    
+    # Buscar la regla de location = /index.php (con o sin espacios)
+    has_index_php=false
+    if grep -E 'location[[:space:]]*=[[:space:]]*/index\.php' "$NGINX_CONFIG" >/dev/null 2>&1; then
+        has_index_php=true
+    fi
+    
+    # Buscar la regla de bloqueo de otros PHP
+    has_php_block=false
+    if grep -E 'location[[:space:]]*~[[:space:]]*\\\.php' "$NGINX_CONFIG" >/dev/null 2>&1 && \
+       grep -E 'deny[[:space:]]+all' "$NGINX_CONFIG" >/dev/null 2>&1; then
+        has_php_block=true
+    fi
+    
+    if [[ "$has_index_php" == true ]] && [[ "$has_php_block" == true ]]; then
         echo -e "${COLOR_GREEN}✅ ✓ Protección de archivos PHP (solo index.php permitido)${COLOR_RESET}"
         PASSED_CHECKS=$((PASSED_CHECKS + 1))
     else
         echo -e "${COLOR_RED}❌ NO se encontró protección de archivos PHP en Nginx${COLOR_RESET}"
+        if [[ "$has_index_php" == false ]]; then
+            echo -e "${COLOR_YELLOW}   Falta: location = /index.php${COLOR_RESET}"
+        fi
+        if [[ "$has_php_block" == false ]]; then
+            echo -e "${COLOR_YELLOW}   Falta: location ~ \\.php\$ con deny all${COLOR_RESET}"
+        fi
         echo -e "${COLOR_YELLOW}   Añade estas reglas a tu configuración de Nginx:${COLOR_RESET}"
         echo ""
         echo "    location = /index.php {"
