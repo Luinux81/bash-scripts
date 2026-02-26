@@ -253,19 +253,22 @@ chown -R "$OWNER_USER:$WEB_USER" "$APP_PATH"
 # 2. PERMISOS DE ARCHIVOS Y DIRECTORIOS
 # Directorios en 755 (rwxr-xr-x) y Archivos en 644 (rw-r--r--)
 # Con esto, el usuario web puede leer y ejecutar la web, pero NO puede escribir.
+# Nota: Usamos u=rwX,g=rX,o=rX para preservar bits especiales (como SGID)
+# mientras aplicamos los permisos base deseados
 echo -e "${COLOR_GREEN}🔒 Aplicando permisos 755/644 (Solo lectura para el servidor web)...${COLOR_RESET}"
-find "$APP_PATH" -type d -exec chmod 755 {} \;
-find "$APP_PATH" -type f -exec chmod 644 {} \;
+find "$APP_PATH" -type d -exec chmod u=rwx,g=rx,o=rx {} \;
+find "$APP_PATH" -type f -exec chmod u=rw,g=r,o=r {} \;
 
 # 3. EXCEPCIONES PARA LARAVEL (ESCRITURA)
 # Solo las carpetas que Laravel necesita obligatoriamente para funcionar.
+# Nota: Usamos u=rwx,g=rwx,o=rx para preservar bits especiales como SGID
 echo -e "${COLOR_GREEN}📂 Otorgando permisos de escritura solo en storage y cache...${COLOR_RESET}"
 if [[ -d "$APP_PATH/storage" ]]; then
-    chmod -R 775 "$APP_PATH/storage"
+    chmod -R u=rwx,g=rwx,o=rx "$APP_PATH/storage"
 fi
 
 if [[ -d "$APP_PATH/bootstrap/cache" ]]; then
-    chmod -R 775 "$APP_PATH/bootstrap/cache"
+    chmod -R u=rwx,g=rwx,o=rx "$APP_PATH/bootstrap/cache"
 fi
 
 # 4. PROTECCIÓN ESTRICTA DEL .ENV

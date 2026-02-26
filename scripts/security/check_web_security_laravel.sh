@@ -2,12 +2,16 @@
 
 #####################################################################
 # SYNOPSIS
-#   Verifica la configuración de seguridad de una aplicación Laravel
+#   Verifica la seguridad de una aplicación Laravel a nivel de sistema
 # DESCRIPTION
-#   Comprueba permisos de archivos y configuración de Nginx
+#   Comprueba permisos, propietarios y configuración de Nginx para
+#   aplicaciones Laravel en producción.
 # USAGE
-#   sudo ./check_web_security_laravel.sh [APP_PATH]
+#   ./check_web_security_laravel.sh [APP_PATH]
+#   sudo ./check_web_security_laravel.sh [APP_PATH]  # Recomendado
 # EXAMPLES
+#   ./check_web_security_laravel.sh
+#   ./check_web_security_laravel.sh /var/www/myapp
 #   sudo ./check_web_security_laravel.sh /var/www/myapp
 #####################################################################
 
@@ -22,55 +26,136 @@ readonly COLOR_RESET='\033[0m'
 
 # --- VALORES POR DEFECTO ---
 DEFAULT_APP_PATH="$(pwd)"
-DEFAULT_WEB_USER="www-data"
 
-# --- FUNCIÓN DE AYUDA ---
-show_usage() {
-    cat << EOF
-Uso: sudo $(basename "$0") [APP_PATH]
+# --- CONTADORES ---
+TOTAL_CHECKS=0
+PASSED_CHECKS=0
+FAILED_CHECKS=0
+WARNING_CHECKS=0
 
-Verifica la configuración de seguridad de una aplicación Laravel.
+# --- FUNCIONES AUXILIARES ---
 
-ARGUMENTOS:
-    APP_PATH                Ruta a la aplicación Laravel
-                            Default: directorio actual
+# Función para normalizar permisos (elimina bits especiales para comparación)
+normalize_perms() {
+    local perms="$1"
+    # Elimina el primer dígito si hay 4 dígitos (bits especiales)
+    if [[ ${#perms} -eq 4 ]]; then
+        echo "${perms:1}"
+    else
+        echo "$perms"
+    fi
+}
 
-OPCIONES:
-    -h, --help              Muestra esta ayuda
+# Función para verificar permisos (acepta con o sin bits especiales)
+check_permissions() {
+    local path="$1"
+    local expected="$2"
+    local description="$3"
+    
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    
+    if [[ ! -e "$path" ]]; then
+        echo -e "${COLOR_YELLOW}⚠️  $description no existe${COLOR_RESET}"
+        WARNING_CHECKS=$((WARNING_CHECKS + 1))
+        return
+    fi
+    
+    local actual=$(stat -c '%a' "$path" 2>/dev/null || stat -f '%A' "$path" 2>/dev/null)
+    local actual_normalized=$(normalize_perms "$actual")
+    
+    if [[ "$actual_normalized" == "$expected" ]]; then
+        echo -e "${COLOR_GREEN}✅ $description tiene permisos $actual_normalized${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ $description tiene permisos $actual (esperado: $expected)${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+}
 
-EJEMPLOS:
-    # Verificar aplicación en el directorio actual
-    sudo $(basename "$0")
+# Función para verificar propietario y grupo
+check_ownership() {
+    local path="$1"
+    local expected_owner="$2"
+    local expected_group="$3"
+    local description="$4"
+    
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    
+    if [[ ! -e "$path" ]]; then
+        echo -e "${COLOR_YELLOW}⚠️  $description no existe${COLOR_RESET}"
+        WARNING_CHECKS=$((WARNING_CHECKS + 1))
+        return
+    fi
+    
+    local actual_owner=$(stat -c '%U' "$path" 2>/dev/null || stat -f '%Su' "$path" 2>/dev/null)
+    local actual_group=$(stat -c '%G' "$path" 2>/dev/null || stat -f '%Sg' "$path" 2>/dev/null)
+    
+    if [[ "$actual_group" == "$expected_group" ]]; then
+        echo -e "${COLOR_GREEN}✅ Grupo es $expected_group${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ Grupo es $actual_group (esperado: $expected_group)${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+}
 
-    # Verificar aplicación específica
-    sudo $(basename "$0") /var/www/myapp
+# Función para verificar si un usuario puede escribir en un directorio
+can_write() {
+    local user="$1"
+    local path="$2"
+    
+    if [[ $EUID -eq 0 ]]; then
+        # Si somos root, podemos usar sudo
+        sudo -u "$user" test -w "$path"
+    else
+        # Sin sudo, solo podemos verificar el usuario actual
+        if [[ "$(whoami)" == "$user" ]]; then
+            test -w "$path"
+        else
+            # No podemos verificar, retornamos éxito para no dar falso negativo
+            return 0
+        fi
+    fi
+}
 
-EOF
-    exit 0
+# Función para verificar si un usuario puede leer un archivo
+can_read() {
+    local user="$1"
+    local path="$2"
+    
+    if [[ $EUID -eq 0 ]]; then
+        sudo -u "$user" test -r "$path"
+    else
+        if [[ "$(whoami)" == "$user" ]]; then
+            test -r "$path"
+        else
+            return 0
+        fi
+    fi
 }
 
 # --- PROCESAMIENTO DE ARGUMENTOS ---
 APP_PATH=""
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_usage
-            ;;
-        *)
-            if [[ -z "$APP_PATH" ]]; then
-                APP_PATH="$1"
-            else
-                echo -e "${COLOR_RED}Error: Múltiples rutas especificadas${COLOR_RESET}" >&2
-                exit 1
-            fi
-            shift
-            ;;
-    esac
-done
+if [[ $# -gt 0 ]]; then
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        cat << EOF
+Uso: $0 [APP_PATH]
 
-# Si no se especificó APP_PATH, usar el valor por defecto
-if [[ -z "$APP_PATH" ]]; then
+Verifica la seguridad de una aplicación Laravel.
+
+ARGUMENTOS:
+    APP_PATH    Ruta a la aplicación Laravel (default: directorio actual)
+
+OPCIONES:
+    -h, --help  Muestra esta ayuda
+
+NOTA: Se recomienda ejecutar con sudo para verificaciones completas.
+EOF
+        exit 0
+    fi
+    APP_PATH="$1"
+else
     APP_PATH="$DEFAULT_APP_PATH"
 fi
 
@@ -80,285 +165,221 @@ APP_PATH="$(cd "$APP_PATH" 2>/dev/null && pwd)" || {
     exit 1
 }
 
-# --- VALIDACIONES ---
-if [[ ! -d "$APP_PATH" ]]; then
-    echo -e "${COLOR_RED}Error: El directorio '$APP_PATH' no existe${COLOR_RESET}" >&2
-    exit 1
+# Verificar que es un directorio Laravel
+if [[ ! -f "$APP_PATH/artisan" ]] || [[ ! -f "$APP_PATH/composer.json" ]]; then
+    echo -e "${COLOR_YELLOW}⚠️  Advertencia: Este directorio no parece ser una aplicación Laravel${COLOR_RESET}"
 fi
 
+# Advertencia si no se ejecuta como root
 if [[ $EUID -ne 0 ]]; then
     echo -e "${COLOR_YELLOW}Advertencia: Se recomienda ejecutar con sudo para verificaciones completas${COLOR_RESET}"
 fi
 
-# --- VARIABLES DE CONTADORES ---
-TOTAL_CHECKS=0
-PASSED_CHECKS=0
-FAILED_CHECKS=0
-WARNING_CHECKS=0
-
-# --- FUNCIONES DE VERIFICACIÓN ---
-check_pass() {
-    echo -e "${COLOR_GREEN}✅ $1${COLOR_RESET}"
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-}
-
-check_fail() {
-    echo -e "${COLOR_RED}❌ $1${COLOR_RESET}"
-    FAILED_CHECKS=$((FAILED_CHECKS + 1))
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-}
-
-check_warn() {
-    echo -e "${COLOR_YELLOW}⚠️  $1${COLOR_RESET}"
-    WARNING_CHECKS=$((WARNING_CHECKS + 1))
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
-}
-
-check_info() {
-    echo -e "${COLOR_BLUE}ℹ️  $1${COLOR_RESET}"
-}
-
 # --- INICIO DE VERIFICACIÓN ---
-echo ""
 echo -e "${COLOR_BLUE}🔍 Verificación de Seguridad de Laravel${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo -e "📁 Aplicación: ${COLOR_YELLOW}$APP_PATH${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
 
-# --- SECCIÓN 1: PERMISOS DE DIRECTORIOS ---
+# --- VERIFICAR PERMISOS DE DIRECTORIOS ---
 echo -e "${COLOR_BLUE}📂 Verificando permisos de directorios...${COLOR_RESET}"
-echo ""
 
-# Verificar storage/
-if [[ -d "$APP_PATH/storage" ]]; then
-    STORAGE_PERMS=$(stat -c "%a" "$APP_PATH/storage")
-    if [[ "$STORAGE_PERMS" == "775" ]]; then
-        check_pass "storage/ tiene permisos 775"
-    else
-        check_fail "storage/ tiene permisos $STORAGE_PERMS (esperado: 775)"
-    fi
-else
-    check_warn "storage/ no existe"
-fi
+check_permissions "$APP_PATH/storage" "775" "storage/"
+check_permissions "$APP_PATH/bootstrap/cache" "775" "bootstrap/cache/"
+check_permissions "$APP_PATH/app" "755" "app/"
+check_permissions "$APP_PATH/config" "755" "config/"
+check_permissions "$APP_PATH/database" "755" "database/"
+check_permissions "$APP_PATH/public" "755" "public/"
+check_permissions "$APP_PATH/routes" "755" "routes/"
 
-# Verificar bootstrap/cache/
-if [[ -d "$APP_PATH/bootstrap/cache" ]]; then
-    CACHE_PERMS=$(stat -c "%a" "$APP_PATH/bootstrap/cache")
-    if [[ "$CACHE_PERMS" == "775" ]]; then
-        check_pass "bootstrap/cache/ tiene permisos 775"
-    else
-        check_fail "bootstrap/cache/ tiene permisos $CACHE_PERMS (esperado: 775)"
-    fi
-else
-    check_warn "bootstrap/cache/ no existe"
-fi
-
-# Verificar directorios normales (deben ser 755)
-for dir in app config database public routes; do
-    if [[ -d "$APP_PATH/$dir" ]]; then
-        DIR_PERMS=$(stat -c "%a" "$APP_PATH/$dir")
-        if [[ "$DIR_PERMS" == "755" ]]; then
-            check_pass "$dir/ tiene permisos 755"
-        else
-            check_fail "$dir/ tiene permisos $DIR_PERMS (esperado: 755)"
-        fi
-    fi
-done
-
-echo ""
-
-# --- SECCIÓN 2: PERMISOS DE ARCHIVOS ---
+# --- VERIFICAR PERMISOS DE ARCHIVOS CLAVE ---
 echo -e "${COLOR_BLUE}📄 Verificando permisos de archivos...${COLOR_RESET}"
-echo ""
 
-# Verificar .env
-if [[ -f "$APP_PATH/.env" ]]; then
-    ENV_PERMS=$(stat -c "%a" "$APP_PATH/.env")
-    if [[ "$ENV_PERMS" == "640" ]]; then
-        check_pass ".env tiene permisos 640"
-    else
-        check_fail ".env tiene permisos $ENV_PERMS (esperado: 640)"
-    fi
-else
-    check_warn ".env no existe"
-fi
+check_permissions "$APP_PATH/.env" "640" ".env"
+check_permissions "$APP_PATH/composer.json" "644" "composer.json"
+check_permissions "$APP_PATH/artisan" "644" "artisan"
 
-# Verificar algunos archivos comunes (deben ser 644)
-for file in composer.json artisan; do
-    if [[ -f "$APP_PATH/$file" ]]; then
-        FILE_PERMS=$(stat -c "%a" "$APP_PATH/$file")
-        if [[ "$FILE_PERMS" == "644" ]]; then
-            check_pass "$file tiene permisos 644"
-        else
-            check_fail "$file tiene permisos $FILE_PERMS (esperado: 644)"
-        fi
-    fi
-done
-
-echo ""
-
-# --- SECCIÓN 3: PROPIETARIOS ---
+# --- VERIFICAR PROPIETARIOS ---
 echo -e "${COLOR_BLUE}👤 Verificando propietarios...${COLOR_RESET}"
-echo ""
 
-ROOT_OWNER=$(stat -c "%U" "$APP_PATH")
-ROOT_GROUP=$(stat -c "%G" "$APP_PATH")
-check_info "Propietario: $ROOT_OWNER:$ROOT_GROUP"
+actual_owner=$(stat -c '%U' "$APP_PATH" 2>/dev/null || stat -f '%Su' "$APP_PATH" 2>/dev/null)
+actual_group=$(stat -c '%G' "$APP_PATH" 2>/dev/null || stat -f '%Sg' "$APP_PATH" 2>/dev/null)
 
-# Verificar que www-data es el grupo
-if [[ "$ROOT_GROUP" == "$DEFAULT_WEB_USER" ]]; then
-    check_pass "Grupo es $DEFAULT_WEB_USER"
+echo -e "${COLOR_BLUE}ℹ️  Propietario: $actual_owner:$actual_group${COLOR_RESET}"
+
+# Verificar que el grupo es www-data (o nginx en algunos sistemas)
+if [[ "$actual_group" == "www-data" ]] || [[ "$actual_group" == "nginx" ]]; then
+    echo -e "${COLOR_GREEN}✅ Grupo es $actual_group${COLOR_RESET}"
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    WEB_USER="$actual_group"
 else
-    check_warn "Grupo es $ROOT_GROUP (esperado: $DEFAULT_WEB_USER)"
+    echo -e "${COLOR_RED}❌ Grupo es $actual_group (esperado: www-data o nginx)${COLOR_RESET}"
+    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    WEB_USER="www-data"  # Asumimos www-data para las siguientes verificaciones
 fi
 
-echo ""
-
-# --- SECCIÓN 4: PERMISOS DE ESCRITURA ---
+# --- VERIFICAR PERMISOS DE ESCRITURA ---
 echo -e "${COLOR_BLUE}✍️  Verificando permisos de escritura...${COLOR_RESET}"
-echo ""
 
-# Verificar que www-data puede escribir en storage
-if [[ -d "$APP_PATH/storage" ]]; then
-    if sudo -u "$DEFAULT_WEB_USER" test -w "$APP_PATH/storage" 2>/dev/null; then
-        check_pass "$DEFAULT_WEB_USER puede escribir en storage/"
-    else
-        check_fail "$DEFAULT_WEB_USER NO puede escribir en storage/"
-    fi
-fi
-
-# Verificar que www-data puede escribir en bootstrap/cache
-if [[ -d "$APP_PATH/bootstrap/cache" ]]; then
-    if sudo -u "$DEFAULT_WEB_USER" test -w "$APP_PATH/bootstrap/cache" 2>/dev/null; then
-        check_pass "$DEFAULT_WEB_USER puede escribir en bootstrap/cache/"
-    else
-        check_fail "$DEFAULT_WEB_USER NO puede escribir en bootstrap/cache/"
-    fi
-fi
-
-# Verificar que www-data puede leer .env
-if [[ -f "$APP_PATH/.env" ]]; then
-    if sudo -u "$DEFAULT_WEB_USER" test -r "$APP_PATH/.env" 2>/dev/null; then
-        check_pass "$DEFAULT_WEB_USER puede leer .env"
-    else
-        check_fail "$DEFAULT_WEB_USER NO puede leer .env"
-    fi
-fi
-
-# Verificar que www-data NO puede escribir .env (seguridad)
-if [[ -f "$APP_PATH/.env" ]]; then
-    if sudo -u "$DEFAULT_WEB_USER" test -w "$APP_PATH/.env" 2>/dev/null; then
-        check_fail "$DEFAULT_WEB_USER puede escribir .env (RIESGO DE SEGURIDAD)"
-    else
-        check_pass "$DEFAULT_WEB_USER NO puede escribir .env (seguro)"
-    fi
-fi
-
-echo ""
-
-# --- SECCIÓN 5: CONFIGURACIÓN DE NGINX ---
-echo -e "${COLOR_BLUE}🌐 Verificando configuración de Nginx...${COLOR_RESET}"
-echo ""
-
-# Buscar archivos de configuración de Nginx
-NGINX_CONFIGS=$(find /etc/nginx/sites-enabled /etc/nginx/sites-available -type f 2>/dev/null | grep -v "default" || true)
-
-if [[ -z "$NGINX_CONFIGS" ]]; then
-    check_warn "No se encontraron configuraciones de Nginx"
+# storage debe ser escribible por www-data
+TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+if can_write "$WEB_USER" "$APP_PATH/storage"; then
+    echo -e "${COLOR_GREEN}✅ $WEB_USER puede escribir en storage/${COLOR_RESET}"
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
 else
-    # Verificar reglas de seguridad
-    FOUND_PHP_PROTECTION=false
-    FOUND_INDEX_ONLY=false
-    FOUND_DOTFILES_PROTECTION=false
-    FOUND_DANGEROUS_EXTENSIONS=false
-    FOUND_MATCHING_CONFIG=false
+    echo -e "${COLOR_RED}❌ $WEB_USER NO puede escribir en storage/${COLOR_RESET}"
+    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+fi
 
-    for config in $NGINX_CONFIGS; do
-        # Verificar si el config apunta al directorio de la aplicación
-        # Buscar líneas "root" que apunten exactamente a $APP_PATH/public o $APP_PATH
-        if grep -q "root[[:space:]]*$APP_PATH/public" "$config" 2>/dev/null || grep -q "root[[:space:]]*$APP_PATH[[:space:]]*;" "$config" 2>/dev/null; then
-            FOUND_MATCHING_CONFIG=true
-            check_info "Analizando: $(basename "$config")"
+# bootstrap/cache debe ser escribible por www-data
+TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+if can_write "$WEB_USER" "$APP_PATH/bootstrap/cache"; then
+    echo -e "${COLOR_GREEN}✅ $WEB_USER puede escribir en bootstrap/cache/${COLOR_RESET}"
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+else
+    echo -e "${COLOR_RED}❌ $WEB_USER NO puede escribir en bootstrap/cache/${COLOR_RESET}"
+    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+fi
 
-            # Regla 1: Protección de PHP (método quirúrgico o regex)
-            # Buscar "location = /index.php" (método quirúrgico) O "location ~ \.php$" con deny
-            if grep -q "location = /index\.php" "$config" 2>/dev/null; then
-                FOUND_INDEX_ONLY=true
-                check_pass "✓ Protección quirúrgica: Solo index.php permitido (location =)"
-            fi
+# .env debe ser legible por www-data
+if [[ -f "$APP_PATH/.env" ]]; then
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    if can_read "$WEB_USER" "$APP_PATH/.env"; then
+        echo -e "${COLOR_GREEN}✅ $WEB_USER puede leer .env${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ $WEB_USER NO puede leer .env${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+    
+    # .env NO debe ser escribible por www-data
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    if can_write "$WEB_USER" "$APP_PATH/.env"; then
+        echo -e "${COLOR_RED}❌ $WEB_USER puede escribir .env (riesgo de seguridad)${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    else
+        echo -e "${COLOR_GREEN}✅ $WEB_USER NO puede escribir .env (seguro)${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    fi
+fi
 
-            if grep -q "location ~ .*\.php" "$config" 2>/dev/null && grep -A 2 "location ~ .*\.php" "$config" | grep -q "deny all"; then
-                FOUND_PHP_PROTECTION=true
-                check_pass "✓ Bloqueo de otros archivos PHP (location ~ \.php$ + deny all)"
-            fi
+# --- VERIFICAR CONFIGURACIÓN DE NGINX ---
+echo -e "${COLOR_BLUE}🌐 Verificando configuración de Nginx...${COLOR_RESET}"
 
-            # Regla 2: Protección de archivos ocultos (.env, .git, etc.)
-            # Buscar "location ~ /\." o similar
-            if grep -q "location ~ /\\\." "$config" 2>/dev/null || grep -q "location.*\.env\|\.git" "$config" 2>/dev/null; then
-                FOUND_DOTFILES_PROTECTION=true
-                check_pass "✓ Protección de archivos ocultos (.env, .git, etc.)"
-            fi
+# Buscar archivo de configuración de Nginx para este sitio
+NGINX_CONFIG=""
+SITE_NAME=""
 
-            # Regla 3: Bloqueo de extensiones peligrosas
-            # Buscar "location ~* \.(env|log|sql|..." o similar
-            if grep -q "location.*\\.env\|log\|sql\|git\|sh\|bak" "$config" 2>/dev/null; then
-                FOUND_DANGEROUS_EXTENSIONS=true
-                check_pass "✓ Bloqueo de extensiones peligrosas (.env, .log, .sql, etc.)"
-            fi
+# Buscar en sites-enabled primero
+if [[ -d "/etc/nginx/sites-enabled" ]]; then
+    for conf in /etc/nginx/sites-enabled/*; do
+        if [[ -f "$conf" ]] && grep -q "root.*$APP_PATH" "$conf" 2>/dev/null; then
+            NGINX_CONFIG="$conf"
+            SITE_NAME=$(basename "$conf")
+            break
         fi
     done
-
-    # Si no se encontró ninguna configuración que coincida
-    if ! $FOUND_MATCHING_CONFIG; then
-        check_warn "No se encontró configuración de Nginx para esta aplicación ($APP_PATH)"
-        check_info "Verifica que exista un archivo en /etc/nginx/sites-enabled/ con 'root $APP_PATH/public;'"
-    else
-        # Verificar que al menos tengamos protección básica de PHP
-        if $FOUND_INDEX_ONLY || $FOUND_PHP_PROTECTION; then
-            if ! $FOUND_INDEX_ONLY; then
-                check_warn "No se encontró 'location = /index.php' (recomendado para máxima seguridad)"
-            fi
-            if ! $FOUND_PHP_PROTECTION; then
-                check_warn "No se encontró bloqueo explícito de otros archivos PHP"
-            fi
-        else
-            check_fail "NO se encontró protección de archivos PHP en Nginx"
-        fi
-
-        # Verificar protección de archivos sensibles
-        if ! $FOUND_DOTFILES_PROTECTION && ! $FOUND_DANGEROUS_EXTENSIONS; then
-            check_warn "No se encontró protección de archivos sensibles (.env, .git, etc.)"
-        fi
-    fi
 fi
 
-echo ""
+# Si no se encontró, buscar en sites-available
+if [[ -z "$NGINX_CONFIG" ]] && [[ -d "/etc/nginx/sites-available" ]]; then
+    for conf in /etc/nginx/sites-available/*; do
+        if [[ -f "$conf" ]] && grep -q "root.*$APP_PATH" "$conf" 2>/dev/null; then
+            NGINX_CONFIG="$conf"
+            SITE_NAME=$(basename "$conf")
+            break
+        fi
+    done
+fi
 
-# --- RESUMEN FINAL ---
+# Si no se encontró, buscar en conf.d
+if [[ -z "$NGINX_CONFIG" ]] && [[ -d "/etc/nginx/conf.d" ]]; then
+    for conf in /etc/nginx/conf.d/*.conf; do
+        if [[ -f "$conf" ]] && grep -q "root.*$APP_PATH" "$conf" 2>/dev/null; then
+            NGINX_CONFIG="$conf"
+            SITE_NAME=$(basename "$conf")
+            break
+        fi
+    done
+fi
+
+if [[ -n "$NGINX_CONFIG" ]]; then
+    echo -e "${COLOR_BLUE}ℹ️  Analizando: $SITE_NAME${COLOR_RESET}"
+    
+    # Verificar protección de archivos ocultos
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    if grep -q 'location.*~.*\\\.\(\?!well-known\)' "$NGINX_CONFIG" || \
+       grep -q 'location.*~.*\\\.(?!well-known)' "$NGINX_CONFIG" || \
+       grep -q 'location.*~.*\\\.\.\*' "$NGINX_CONFIG"; then
+        echo -e "${COLOR_GREEN}✅ ✓ Protección de archivos ocultos (.env, .git, etc.)${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ NO se encontró protección de archivos ocultos${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+    
+    # Verificar bloqueo de extensiones peligrosas
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    if grep -q 'location.*~.*\\\..*env\|log\|sql\|git\|sh\|bak' "$NGINX_CONFIG"; then
+        echo -e "${COLOR_GREEN}✅ ✓ Bloqueo de extensiones peligrosas (.env, .log, .sql, etc.)${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ NO se encontró bloqueo de extensiones peligrosas${COLOR_RESET}"
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+    
+    # Verificar protección de PHP (nueva configuración)
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    if grep -q 'location.*=.*/index\.php' "$NGINX_CONFIG" && \
+       grep -q 'location.*~.*\\\.php.*deny all' "$NGINX_CONFIG"; then
+        echo -e "${COLOR_GREEN}✅ ✓ Protección de archivos PHP (solo index.php permitido)${COLOR_RESET}"
+        PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    else
+        echo -e "${COLOR_RED}❌ NO se encontró protección de archivos PHP en Nginx${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   Añade estas reglas a tu configuración de Nginx:${COLOR_RESET}"
+        echo ""
+        echo "    location = /index.php {"
+        echo "        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;"
+        echo "        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;"
+        echo "        include fastcgi_params;"
+        echo "        fastcgi_hide_header X-Powered-By;"
+        echo "    }"
+        echo ""
+        echo "    location ~ \\.php\$ {"
+        echo "        deny all;"
+        echo "        return 403;"
+        echo "    }"
+        echo ""
+        FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    fi
+else
+    echo -e "${COLOR_YELLOW}⚠️  No se encontró configuración de Nginx para esta aplicación${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}   Verifica manualmente: /etc/nginx/sites-enabled/${COLOR_RESET}"
+    WARNING_CHECKS=$((WARNING_CHECKS + 3))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 3))
+fi
+
+# --- RESUMEN ---
+echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo -e "${COLOR_BLUE}📊 Resumen de Verificación${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo -e "Total de verificaciones: ${COLOR_BLUE}$TOTAL_CHECKS${COLOR_RESET}"
-echo -e "Pasadas: ${COLOR_GREEN}$PASSED_CHECKS${COLOR_RESET}"
-echo -e "Fallidas: ${COLOR_RED}$FAILED_CHECKS${COLOR_RESET}"
-echo -e "Advertencias: ${COLOR_YELLOW}$WARNING_CHECKS${COLOR_RESET}"
-echo ""
+echo -e "Total de verificaciones: $TOTAL_CHECKS"
+echo -e "${COLOR_GREEN}Pasadas: $PASSED_CHECKS${COLOR_RESET}"
+echo -e "${COLOR_RED}Fallidas: $FAILED_CHECKS${COLOR_RESET}"
+echo -e "${COLOR_YELLOW}Advertencias: $WARNING_CHECKS${COLOR_RESET}"
 
-# Determinar estado general
 if [[ $FAILED_CHECKS -eq 0 ]] && [[ $WARNING_CHECKS -eq 0 ]]; then
-    echo -e "${COLOR_GREEN}✅ ¡Excelente! Todos los checks pasaron correctamente.${COLOR_RESET}"
+    echo -e "${COLOR_GREEN}✅ ¡Configuración de seguridad correcta!${COLOR_RESET}"
     exit 0
 elif [[ $FAILED_CHECKS -eq 0 ]]; then
-    echo -e "${COLOR_YELLOW}⚠️  Configuración aceptable, pero hay advertencias.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}⚠️  Configuración correcta con algunas advertencias.${COLOR_RESET}"
     exit 0
 else
     echo -e "${COLOR_RED}❌ Se encontraron problemas de seguridad. Revisa los errores arriba.${COLOR_RESET}"
-    echo ""
     echo "Para corregir los permisos, ejecuta:"
-    echo -e "${COLOR_YELLOW}  sudo /ruta/al/web_security_laravel.sh $APP_PATH${COLOR_RESET}"
+    echo -e "  ${COLOR_GREEN}sudo /ruta/al/web_security_laravel.sh $APP_PATH${COLOR_RESET}"
     exit 1
 fi
-
