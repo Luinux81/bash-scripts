@@ -140,6 +140,20 @@ Si el directorio **NO** parece Laravel, el warning se muestra **dos veces**:
 3. **Permisos base**: 755 para directorios, 644 para archivos (solo lectura para web)
 4. **Excepciones Laravel**: 775 en `storage/` y `bootstrap/cache/` (escritura necesaria)
 5. **Protección .env**: 640 (solo propietario y grupo pueden leer)
+6. **Manejo especial SQLite**: Si detecta archivos `.sqlite`, les aplica 664 (escritura necesaria)
+
+#### ⚠️ Nota sobre SQLite
+
+Si tu aplicación usa SQLite, el script automáticamente:
+
+- Detecta archivos `.sqlite` en `database/` y `storage/database/`
+- Les aplica permisos `664` (rw-rw-r--) para permitir escritura por el servidor web
+- Esto es necesario porque SQLite necesita escribir en el archivo de base de datos
+
+**Ubicaciones verificadas:**
+
+- `database/*.sqlite`
+- `storage/database/*.sqlite`
 
 ### Configuración Adicional Requerida en Nginx
 
@@ -588,6 +602,33 @@ ls -la /ruta/app/storage
 # Si es necesario, volver a aplicar permisos
 sudo harden-laravel /ruta/app --force
 ```
+
+#### **Error: SQLSTATE[HY000]: attempt to write a readonly database (SQLite)**
+
+Este error ocurre cuando usas SQLite y el archivo de base de datos no tiene permisos de escritura.
+
+```bash
+# El script automáticamente detecta y corrige esto, pero si persiste:
+
+# 1. Verificar permisos del archivo SQLite
+ls -la /ruta/app/database/*.sqlite
+# Debe mostrar 664 (rw-rw-r--) y grupo www-data
+
+# 2. Si no es correcto, ejecutar el script de nuevo
+sudo harden-laravel /ruta/app --force
+
+# 3. O corregir manualmente
+sudo chmod 664 /ruta/app/database/database.sqlite
+sudo chmod 775 /ruta/app/database
+sudo chown usuario:www-data /ruta/app/database/database.sqlite
+```
+
+**¿Por qué SQLite necesita permisos especiales?**
+
+- SQLite escribe directamente en el archivo de base de datos
+- El servidor web (www-data) necesita permisos de escritura en el archivo
+- También necesita permisos de escritura en el directorio (para archivos temporales)
+- Por eso se usa `664` en lugar de `644`
 
 #### **Error: .env no se puede leer**
 

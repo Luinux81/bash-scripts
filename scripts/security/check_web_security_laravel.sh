@@ -204,6 +204,30 @@ check_permissions "$APP_PATH/.env" "640" ".env"
 check_permissions "$APP_PATH/composer.json" "644" "composer.json"
 check_permissions "$APP_PATH/artisan" "644" "artisan"
 
+# Verificar archivos SQLite si existen
+if [[ -d "$APP_PATH/database" ]]; then
+    SQLITE_FILES=$(find "$APP_PATH/database" -type f -name "*.sqlite" 2>/dev/null)
+    if [[ -n "$SQLITE_FILES" ]]; then
+        echo -e "${COLOR_BLUE}💾 Verificando bases de datos SQLite...${COLOR_RESET}"
+        while IFS= read -r sqlite_file; do
+            if [[ -f "$sqlite_file" ]]; then
+                check_permissions "$sqlite_file" "664" "$(basename "$sqlite_file")"
+            fi
+        done <<< "$SQLITE_FILES"
+    fi
+fi
+
+if [[ -d "$APP_PATH/storage/database" ]]; then
+    SQLITE_FILES=$(find "$APP_PATH/storage/database" -type f -name "*.sqlite" 2>/dev/null)
+    if [[ -n "$SQLITE_FILES" ]]; then
+        while IFS= read -r sqlite_file; do
+            if [[ -f "$sqlite_file" ]]; then
+                check_permissions "$sqlite_file" "664" "storage/$(basename "$sqlite_file")"
+            fi
+        done <<< "$SQLITE_FILES"
+    fi
+fi
+
 # --- VERIFICAR PROPIETARIOS ---
 echo -e "${COLOR_BLUE}👤 Verificando propietarios...${COLOR_RESET}"
 

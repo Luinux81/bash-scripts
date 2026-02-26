@@ -226,6 +226,7 @@ echo -e "  • Archivos: ${COLOR_YELLOW}644${COLOR_RESET} (rw-r--r--)"
 echo -e "  • storage/: ${COLOR_YELLOW}775${COLOR_RESET} (rwxrwxr-x)"
 echo -e "  • bootstrap/cache/: ${COLOR_YELLOW}775${COLOR_RESET} (rwxrwxr-x)"
 echo -e "  • .env: ${COLOR_YELLOW}640${COLOR_RESET} (rw-r-----)"
+echo -e "  • *.sqlite: ${COLOR_YELLOW}664${COLOR_RESET} (rw-rw-r--) ${COLOR_BLUE}[si existen]${COLOR_RESET}"
 echo ""
 
 # Prompt de confirmación (omitir si --force está activo)
@@ -269,6 +270,45 @@ fi
 
 if [[ -d "$APP_PATH/bootstrap/cache" ]]; then
     chmod -R u=rwx,g=rwx,o=rx "$APP_PATH/bootstrap/cache"
+fi
+
+# MANEJO ESPECIAL PARA SQLITE
+# SQLite necesita permisos de escritura tanto en el archivo .sqlite como en su directorio
+echo -e "${COLOR_GREEN}💾 Verificando bases de datos SQLite...${COLOR_RESET}"
+
+# Buscar archivos .sqlite en database/
+if [[ -d "$APP_PATH/database" ]]; then
+    SQLITE_FILES=$(find "$APP_PATH/database" -type f -name "*.sqlite" 2>/dev/null)
+    
+    if [[ -n "$SQLITE_FILES" ]]; then
+        echo -e "${COLOR_YELLOW}   ℹ️  Se encontraron bases de datos SQLite${COLOR_RESET}"
+        
+        while IFS= read -r sqlite_file; do
+            if [[ -f "$sqlite_file" ]]; then
+                # El archivo SQLite debe ser escribible por el grupo
+                chmod 664 "$sqlite_file"
+                echo -e "${COLOR_YELLOW}      • $(basename "$sqlite_file"): permisos 664 (rw-rw-r--)${COLOR_RESET}"
+                
+                # El directorio que contiene el SQLite también debe ser escribible
+                sqlite_dir=$(dirname "$sqlite_file")
+                chmod 775 "$sqlite_dir"
+            fi
+        done <<< "$SQLITE_FILES"
+    fi
+fi
+
+# También verificar en storage/database/ (ubicación alternativa)
+if [[ -d "$APP_PATH/storage/database" ]]; then
+    SQLITE_FILES=$(find "$APP_PATH/storage/database" -type f -name "*.sqlite" 2>/dev/null)
+    
+    if [[ -n "$SQLITE_FILES" ]]; then
+        while IFS= read -r sqlite_file; do
+            if [[ -f "$sqlite_file" ]]; then
+                chmod 664 "$sqlite_file"
+                echo -e "${COLOR_YELLOW}      • storage/$(basename "$sqlite_file"): permisos 664 (rw-rw-r--)${COLOR_RESET}"
+            fi
+        done <<< "$SQLITE_FILES"
+    fi
 fi
 
 # 4. PROTECCIÓN ESTRICTA DEL .ENV
