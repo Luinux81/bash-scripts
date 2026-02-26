@@ -148,12 +148,20 @@ Si tu aplicación usa SQLite, el script automáticamente:
 
 - Detecta archivos `.sqlite` en `database/` y `storage/database/`
 - Les aplica permisos `664` (rw-rw-r--) para permitir escritura por el servidor web
-- Esto es necesario porque SQLite necesita escribir en el archivo de base de datos
+- Aplica permisos `775` al directorio `database/` (en lugar de `755`) para permitir archivos temporales
+- Esto es necesario porque SQLite necesita:
+  - Escribir en el archivo de base de datos
+  - Crear archivos temporales de lock en el mismo directorio
 
 **Ubicaciones verificadas:**
 
 - `database/*.sqlite`
 - `storage/database/*.sqlite`
+
+**Permisos especiales para SQLite:**
+
+- Archivos `.sqlite`: `664` (rw-rw-r--)
+- Directorio `database/`: `775` (rwxrwxr-x) cuando contiene SQLite, `755` (rwxr-xr-x) en caso contrario
 
 ### Configuración Adicional Requerida en Nginx
 
@@ -627,8 +635,8 @@ sudo chown usuario:www-data /ruta/app/database/database.sqlite
 
 - SQLite escribe directamente en el archivo de base de datos
 - El servidor web (www-data) necesita permisos de escritura en el archivo
-- También necesita permisos de escritura en el directorio (para archivos temporales)
-- Por eso se usa `664` en lugar de `644`
+- También necesita permisos de escritura en el directorio (para archivos temporales y locks)
+- Por eso se usa `664` en archivos y `775` en el directorio que los contiene
 
 #### **Error: .env no se puede leer**
 
@@ -710,3 +718,4 @@ Es seguro si lo usas correctamente. Asegúrate siempre de:
 - Estar en el directorio correcto antes de ejecutarlo
 - Verificar la ruta con `pwd` o especificarla explícitamente
 - Usarlo solo en scripts automatizados donde confías en el contexto de ejecución
+-

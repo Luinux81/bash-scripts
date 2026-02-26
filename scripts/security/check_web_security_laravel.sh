@@ -193,7 +193,19 @@ check_permissions "$APP_PATH/storage" "775" "storage/"
 check_permissions "$APP_PATH/bootstrap/cache" "775" "bootstrap/cache/"
 check_permissions "$APP_PATH/app" "755" "app/"
 check_permissions "$APP_PATH/config" "755" "config/"
-check_permissions "$APP_PATH/database" "755" "database/"
+
+# database/ puede ser 755 o 775 dependiendo de si hay SQLite
+# Si hay archivos .sqlite, debe ser 775 para permitir crear archivos temporales
+HAS_SQLITE=false
+if [[ -d "$APP_PATH/database" ]]; then
+    if find "$APP_PATH/database" -type f -name "*.sqlite" 2>/dev/null | grep -q .; then
+        HAS_SQLITE=true
+        check_permissions "$APP_PATH/database" "775" "database/"
+    else
+        check_permissions "$APP_PATH/database" "755" "database/"
+    fi
+fi
+
 check_permissions "$APP_PATH/public" "755" "public/"
 check_permissions "$APP_PATH/routes" "755" "routes/"
 
