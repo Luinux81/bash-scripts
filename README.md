@@ -1,250 +1,178 @@
 # Bash Scripts
 
-Colección de scripts útiles para Bash que facilitan tareas comunes de filesystem y utilidades del sistema.
+Colección de scripts útiles organizados por categoría para automatización de tareas en sistemas Linux.
 
-## 📋 Contenido
+## 📋 Estructura
 
-- **Filesystem**: Scripts para navegación y visualización de archivos
-  - `show-selected-files.sh`: Selector interactivo con FZF
-  - `get-file-contents.sh`: Visualizador de contenido de archivos
+```
+bash-scripts/
+├── laravel/          # Scripts específicos de Laravel
+│   ├── security-check.sh
+│   └── security-set.sh
+│
+├── system/           # Utilidades generales del sistema
+│   ├── get-file-contents.sh
+│   ├── set-clipboard.sh
+│   └── show-selected-files.sh
+│
+└── scripts/ (deprecated) # Estructura antigua, se eliminará
+```
 
-- **Security**: Scripts de seguridad para aplicaciones web
-  - `web_security_laravel.sh`: Hardening de permisos para Laravel
+## 🚀 Instalación
 
-- **Utils**: Utilidades del sistema
-  - `set-clipboard.sh`: Copiar al portapapeles
-
-## 🚀 Inicio Rápido
-
-### Para Usuarios
-
-#### Opción A: Kit de Herramientas con Symlinks (Recomendado para VPS)
-
-Ideal si gestionas múltiples servidores y quieres mantener los scripts actualizados.
+### Opción 1: Kit de Herramientas con Symlinks (Recomendado para VPS)
 
 ```bash
-# 1. Clonar el repositorio en una carpeta oculta
+# 1. Clonar en carpeta oculta
 git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
 
-# 2. Crear carpeta bin si no existe
-mkdir -p ~/bin
+# 2. Crear enlaces simbólicos según necesites
+ln -s ~/.scripts-repo/laravel/security-check.sh /usr/local/bin/laravel-security-check
+ln -s ~/.scripts-repo/laravel/security-set.sh /usr/local/bin/laravel-security-set
+ln -s ~/.scripts-repo/system/show-selected-files.sh /usr/local/bin/show-files
 
-# 3. Crear enlaces simbólicos a los scripts que necesites
-ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh /usr/local/bin/harden-laravel
-ln -s ~/.scripts-repo/scripts/filesystem/show-selected-files.sh /usr/local/bin/show-files
-
-# 4. Añadir ~/bin al PATH (opcional pero recomendado)
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# 5. Ahora puedes ejecutar desde cualquier directorio
-harden-laravel --help
+# 3. Ejecutar desde cualquier lugar
+laravel-security-check /var/www/myapp
 show-files
 ```
 
-**Ventajas:**
-
-- ✅ Actualización fácil: `cd ~/.scripts-repo && git pull`
-- ✅ Centralización: Un solo repositorio, múltiples scripts disponibles
-- ✅ Escalabilidad: Añade más symlinks según necesites
-
-#### Opción B: Instalación Completa Local
-
-Para desarrollo o uso local con todas las herramientas:
-
+**Actualizar scripts:**
 ```bash
-git clone https://github.com/Luinux81/bash-scripts.git
-cd bash-scripts
-chmod +x scripts/**/*.sh
-```
-
-#### Opción C: Scripts Individuales (Copiar y Pegar)
-
-Si solo necesitas un script específico sin el repositorio:
-
-```bash
-# Copiar un script específico
-cp scripts/filesystem/show-selected-files.sh ~/bin/
-
-# Hacerlo ejecutable
-chmod +x ~/bin/show-selected-files.sh
-
-# Crear un alias en tu .bashrc o .zshrc
-echo 'alias show-files="~/bin/show-selected-files.sh"' >> ~/.bashrc
-```
-
-### Para Desarrolladores
-
-```bash
-# Clonar el repositorio
-git clone https://github.com/Luinux81/bash-scripts.git
-cd bash-scripts
-
-# Hacer ejecutables todos los scripts
-find scripts -name "*.sh" -exec chmod +x {} \;
-
-# Instalar dependencias (Ubuntu/Debian)
-sudo apt install fzf xclip bat fd-find
-```
-
-### Gestión en Múltiples VPS
-
-Si gestionas varios servidores, puedes mantener los scripts sincronizados:
-
-```bash
-# En cada VPS, clonar en ~/.scripts-repo
-ssh usuario@vps1.ejemplo.com
-git clone https://github.com/Luinux81/bash-scripts.git ~/.scripts-repo
-
-# Crear symlinks solo a los scripts que necesites en ese servidor
-ln -s ~/.scripts-repo/scripts/security/web_security_laravel.sh ~/bin/harden-laravel
-
-# Para actualizar en todos los servidores
 cd ~/.scripts-repo && git pull
 ```
 
-**Tip:** Puedes automatizar el despliegue con un script de provisioning (Ansible, Terraform, etc.)
+---
 
-## 📖 Uso
-
-### show-selected-files.sh
-
-Selector interactivo de archivos con previsualización:
+### Opción 2: Instalación Local Completa
 
 ```bash
-# Desde el directorio actual
-./scripts/filesystem/show-selected-files.sh
-
-# Desde un directorio específico
-./scripts/filesystem/show-selected-files.sh /ruta/directorio
-
-# Copiar resultado al portapapeles
-./scripts/filesystem/show-selected-files.sh . --clipboard
+git clone https://github.com/Luinux81/bash-scripts.git
+cd bash-scripts
+find . -name "*.sh" -exec chmod +x {} \;
 ```
 
-### get-file-contents.sh
+---
 
-Mostrar contenido de archivos:
+### Opción 3: Scripts Individuales
 
 ```bash
-# Un archivo
-./scripts/filesystem/get-file-contents.sh archivo.txt
-
-# Múltiples archivos
-./scripts/filesystem/get-file-contents.sh file1.js file2.js file3.js
+# Descargar un script específico
+curl -O https://raw.githubusercontent.com/Luinux81/bash-scripts/main/system/show-selected-files.sh
+chmod +x show-selected-files.sh
 ```
 
-### web_security_laravel.sh
+---
 
-Hardening de seguridad para Laravel:
+## 📦 Categorías
 
-```bash
-# Aplicar en directorio actual (detecta tu usuario automáticamente)
-cd /var/www/myapp
-sudo ./scripts/security/web_security_laravel.sh
+### Laravel
+Scripts para proyectos Laravel en producción/staging:
+- **security-check.sh**: Auditoría de seguridad (permisos, nginx, .env)
+- **security-set.sh**: Aplicar hardening de permisos
 
-# Especificar ruta de la aplicación
-sudo ./scripts/security/web_security_laravel.sh /var/www/myapp
+### System
+Utilidades generales del sistema:
+- **get-file-contents.sh**: Visualizar contenido de archivos
+- **set-clipboard.sh**: Copiar al portapapeles
+- **show-selected-files.sh**: Selector interactivo con FZF
 
-# Cambiar usuario web (ej: nginx)
-sudo ./scripts/security/web_security_laravel.sh /var/www/myapp --web-user nginx
-```
-
-### set-clipboard.sh
-
-Copiar al portapapeles:
-
-```bash
-# Copiar texto
-echo "Hola mundo" | ./scripts/utils/set-clipboard.sh
-
-# Copiar archivo
-cat documento.txt | ./scripts/utils/set-clipboard.sh
-```
+---
 
 ## 🔧 Dependencias
 
 ### Requeridas
+- bash 4.0+
 
-- **bash** 4.0+
-
-### Opcionales (mejoran funcionalidad)
-
-- **fzf**: Selector interactivo (requerido para `show-selected-files.sh`)
-- **xclip**: Portapapeles (requerido para `--clipboard`)
+### Opcionales (según script)
+- **fzf**: Para `show-selected-files.sh`
+- **xclip**: Para `--clipboard` en varios scripts
 - **bat**: Syntax highlighting
 - **fd**: Búsqueda rápida de archivos
 
-### Instalación de Dependencias
-
+**Instalación (Ubuntu/Debian):**
 ```bash
-# Ubuntu/Debian
 sudo apt install fzf xclip bat fd-find
-
-# Fedora
-sudo dnf install fzf xclip bat fd-find
-
-# macOS
-brew install fzf bat fd
-
-# Arch Linux
-sudo pacman -S fzf xclip bat fd
 ```
 
-## 📚 Documentación Detallada
+---
 
-Cada directorio de scripts contiene su propio README con documentación específica:
+## 💡 Uso
 
-- [Scripts de Filesystem](scripts/filesystem/README.md)
-- [Scripts de Seguridad](scripts/security/README.md)
-- [Scripts de Utilidades](scripts/utils/README.md)
+Todos los scripts incluyen `--help`:
+
+```bash
+./laravel/security-check.sh --help
+./system/show-selected-files.sh --help
+```
+
+---
+
+## 🚢 Deployment
+
+### Para Proyectos Laravel
+
+Los scripts de `laravel/` están diseñados para incluirse en templates de devcontainer:
+
+```
+docs-proyectos/templates/laravel/.devcontainer/deployment/
+└── scripts/
+    ├── security-check.sh  # ← Copiado desde bash-scripts/laravel/
+    └── security-set.sh    # ← Copiado desde bash-scripts/laravel/
+```
+
+Luego GitHub Actions los copia al servidor durante el deploy.
+
+---
 
 ## 🛠️ Desarrollo
 
-### Estructura del Proyecto
+### Agregar Nuevos Scripts
 
-```text
-bash-scripts/
-├── scripts/
-│   ├── filesystem/      # Scripts de manejo de archivos
-│   │   ├── README.md
-│   │   ├── show-selected-files.sh
-│   │   └── get-file-contents.sh
-│   ├── security/        # Scripts de seguridad
-│   │   ├── README.md
-│   │   └── web_security_laravel.sh
-│   └── utils/           # Utilidades del sistema
-│       ├── README.md
-│       └── set-clipboard.sh
-└── README.md
-```
+1. Crear en la categoría apropiada (`laravel/`, `system/`, etc.)
+2. Añadir shebang: `#!/usr/bin/env bash`
+3. Incluir `--help` con SYNOPSIS/USAGE
+4. Hacerlo ejecutable: `chmod +x script.sh`
+5. Documentar en este README
 
 ### Convenciones
 
-- Todos los scripts usan `#!/usr/bin/env bash`
 - Modo estricto: `set -euo pipefail`
-- Documentación en formato SYNOPSIS/USAGE al inicio
-- Colores definidos como constantes readonly
+- Colores como constantes `readonly`
 - Validación de dependencias antes de ejecutar
+- Exit codes: 0 (éxito), 1 (error general), 2 (argumentos inválidos)
 
-### Agregar Nuevos Scripts
+---
 
-1. Crear el script en el directorio apropiado
-2. Agregar header con SYNOPSIS y USAGE
-3. Hacerlo ejecutable: `chmod +x script.sh`
-4. Actualizar el README del directorio
-5. Actualizar este README si es necesario
+## 📝 Migración desde `scripts/` (Deprecated)
+
+La estructura antigua será eliminada. Mapping de scripts:
+
+| Antigua Ubicación | Nueva Ubicación |
+|-------------------|-----------------|
+| `scripts/security/web_security_laravel.sh` | `laravel/security-set.sh` |
+| `scripts/security/check_web_security_laravel.sh` | `laravel/security-check.sh` |
+| `scripts/filesystem/*` | `system/*` |
+| `scripts/utils/*` | `system/*` |
+
+**Actualizar symlinks:**
+```bash
+# Eliminar symlinks antiguos
+rm /usr/local/bin/harden-laravel
+
+# Crear nuevos
+ln -s ~/.scripts-repo/laravel/security-set.sh /usr/local/bin/laravel-security-set
+```
+
+---
 
 ## 📝 Licencia
 
-Este proyecto es de código abierto y está disponible bajo la licencia MIT.
+MIT License - Ver [LICENSE](LICENSE) para más detalles.
 
 ## 🤝 Contribuciones
 
-Las contribuciones son bienvenidas. Por favor:
-
 1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit tus cambios (`git commit -am 'Agregar nueva funcionalidad'`)
-4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
+2. Crea una rama: `git checkout -b feature/nueva-funcionalidad`
+3. Commit: `git commit -am 'Add: nueva funcionalidad'`
+4. Push: `git push origin feature/nueva-funcionalidad`
 5. Abre un Pull Request
